@@ -567,6 +567,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsMergedBlobsCompressionFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -1031,6 +1036,14 @@ public:
     [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 
     [[nodiscard]] bool GetVolumeBalancerEnabled() const;
+
+    [[nodiscard]] bool GetMergedBlobsCompressionEnabled() const;
+    [[nodiscard]] ui64 GetMergedBlobsCompressionChunkSize() const;
+    [[nodiscard]] ui64 GetMergedBlobsCompressionMinSavingsPercent() const;
+    [[nodiscard]] TVector<ui32> GetHugeBlobSlotSizes() const;
+    [[nodiscard]] ui32 GetMinHugeBlobPartSizeSSD() const;
+    [[nodiscard]] ui32 GetMinHugeBlobPartSizeHDD() const;
+    [[nodiscard]] ui32 GetHugeBlobHeaderSize() const;
 };
 
 ui64 GetAllocationUnit(

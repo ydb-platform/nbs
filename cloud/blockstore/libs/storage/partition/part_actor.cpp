@@ -108,6 +108,21 @@ TPartitionActor::TPartitionActor(
             {{"disk", PartitionConfig.GetDiskId()}});
     }
 
+    std::optional<TBlobCompressor::TCompressionConfig> compressionConfig;
+    if (IsMergedBlobsCompressionEnabled()) {
+        compressionConfig = TBlobCompressor::TCompressionConfig{
+            .BlockSize = PartitionConfig.GetBlockSize(),
+            .ChunkSize = Max<ui64>(
+                Config->GetMergedBlobsCompressionChunkSize(),
+                PartitionConfig.GetBlockSize()),
+            .HugeBlobSlotSizes = Config->GetHugeBlobSlotSizes(),
+            .HugeBlobHeaderSize = Config->GetHugeBlobHeaderSize(),
+            .MinHugeBlobPartSizeHDD = Config->GetMinHugeBlobPartSizeHDD(),
+            .MinHugeBlobPartSizeSSD = Config->GetMinHugeBlobPartSizeSSD(),
+            .MinSavingsPercent =
+                Config->GetMergedBlobsCompressionMinSavingsPercent()};
+    }
+
     BlobCompressor = std::make_shared<TBlobCompressor>(
         HasError(codec.GetError()) ? NCloud::NProto::COMPRESSION_CODEC_NONE
                                    : codec.GetResult(),
@@ -115,7 +130,8 @@ TPartitionActor::TPartitionActor(
             .CompressionRate = Config->GetBlobCompressionRate(),
             .BlockSize = PartitionConfig.GetBlockSize(),
             .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
-            .PartCounters = SharedState->GetPartCounters()});
+            .PartCounters = SharedState->GetPartCounters()},
+        std::move(compressionConfig));
 }
 
 TPartitionActor::~TPartitionActor()
@@ -1148,6 +1164,15 @@ bool TPartitionActor::IsCheckpointAwareCleanupEnabled() const
 {
     return Config->GetCheckpointAwareCleanupEnabled() ||
            Config->IsCheckpointAwareCleanupFeatureEnabled(
+               PartitionConfig.GetCloudId(),
+               PartitionConfig.GetFolderId(),
+               PartitionConfig.GetDiskId());
+}
+
+bool TPartitionActor::IsMergedBlobsCompressionEnabled() const
+{
+    return Config->GetMergedBlobsCompressionEnabled() ||
+           Config->IsMergedBlobsCompressionFeatureEnabled(
                PartitionConfig.GetCloudId(),
                PartitionConfig.GetFolderId(),
                PartitionConfig.GetDiskId());

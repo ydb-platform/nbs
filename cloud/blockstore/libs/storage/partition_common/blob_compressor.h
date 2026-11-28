@@ -203,10 +203,30 @@ struct TReadPlan
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Estimates compression sizes for sampled blobs and updates partition counters.
+// Compresses write payloads and estimates compression for sampled blobs.
 class TBlobCompressor
 {
 public:
+    struct TCompressionConfig
+    {
+        ui32 BlockSize;
+        ui64 ChunkSize;
+        // Encoded part slot sizes in bytes; normalized once at construction.
+        TVector<ui32> HugeBlobSlotSizes;
+
+        // On-disk header bytes added after erasure alignment and CRC.
+        ui32 HugeBlobHeaderSize = 5;
+
+        // Minimum encoded part sizes classified as huge, before slot rounding.
+        // Selected by isSsd in CompressBlobIfNeeded; zero treats every blob as
+        // huge for that media kind. MinHugeBlobPartSizeHDD covers HDD/hybrid.
+        ui32 MinHugeBlobPartSizeHDD = 0;
+        ui32 MinHugeBlobPartSizeSSD = 0;
+
+        // For non-huge blobs, require savings strictly above this percentage.
+        ui64 MinSavingsPercent = 0;
+    };
+
     struct TMetricsConfig
     {
         // Sample every Nth blob; zero disables estimation.
@@ -226,13 +246,37 @@ private:
     // Resolved once at construction; lookup failures disable estimation.
     const TResultOrError<const NBlockCodecs::ICodec*> BlobCodec;
     const std::optional<TMetricsConfig> MetricsConfig;
+    const NCloud::NProto::ECompressionCodec Codec;
+    const std::optional<TCompressionConfig> CompressionConfig;
 
 public:
-    // Omitting metricsConfig or setting its sampling rate to zero disables
-    // estimation. The codec is used only for estimating compressed sizes.
+    // Passing std::nullopt for metricsConfig or setting its sampling rate to
+    // zero disables estimation. Passing std::nullopt for compressionConfig
+    // disables write compression.
+    // The codec is shared by write compression and size estimation.
     TBlobCompressor(
         NCloud::NProto::ECompressionCodec codec,
-        std::optional<TMetricsConfig> metricsConfig);
+        std::optional<TMetricsConfig> metricsConfig,
+        std::optional<TCompressionConfig> compressionConfig);
+
+    // Classify blobs by the original largest encoded part size, accounting for
+    // the target group's erasure alignment, the blob's CRC and the on-disk
+    // header. Non-huge blobs must save strictly more than MinSavingsPercent of
+    // the payload bytes.
+    // Huge blobs must remain huge and fit into a strictly smaller huge slot.
+    // isSsd selects MinHugeBlobPartSizeSSD; false selects
+    // MinHugeBlobPartSizeHDD. groupType must be the target channel's
+    // TTabletChannelInfo::Type. Returns S_ALREADY with no payload when
+    // compression is disabled or the applicable policy rejects compression. A
+    // missing fitting slot rejects compression for huge blobs. Metadata size is
+    // not included. Check for S_ALREADY before extracting the result: it is a
+    // success status.
+    [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlobIfNeeded(
+        std::span<const TBlockDataRef> blobPayload,
+        bool isSsd,
+        const NKikimr::TBlobStorageGroupType& groupType,
+        NKikimr::TErasureType::ECrcMode crcMode =
+            NKikimr::TErasureType::CrcModeNone) const;
 
     /**
      * Calculates compression metrics for the given blob.

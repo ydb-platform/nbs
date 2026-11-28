@@ -33,6 +33,41 @@ std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
     return config;
 }
 
+std::optional<TBlobCompressor::TCompressionConfig> PrepareCompressionConfig(
+    std::optional<TBlobCompressor::TCompressionConfig> config)
+{
+    if (config) {
+        SortUnique(config->HugeBlobSlotSizes);
+    }
+    return config;
+}
+
+bool ShouldKeepByMinSavings(
+    ui64 originalSize,
+    ui64 compressedSize,
+    ui64 minSavingsPercent)
+{
+    return minSavingsPercent < 100 &&
+           compressedSize * 100 < originalSize * (100 - minSavingsPercent);
+}
+
+bool ShouldKeepByHugeSlots(
+    ui64 originalPartSize,
+    ui64 compressedPartSize,
+    ui32 hugeBlobThreshold,
+    const TVector<ui32>& slots)
+{
+    if (compressedPartSize < hugeBlobThreshold) {
+        return false;
+    }
+    const auto originalSlot =
+        LowerBound(slots.begin(), slots.end(), originalPartSize);
+    const auto compressedSlot =
+        LowerBound(slots.begin(), slots.end(), compressedPartSize);
+    return originalSlot != slots.end() && compressedSlot != slots.end() &&
+           *compressedSlot < *originalSlot;
+}
+
 TError ValidateCompressBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
@@ -557,10 +592,79 @@ TReadPlan PlanReadBlob(
 
 TBlobCompressor::TBlobCompressor(
     NCloud::NProto::ECompressionCodec codec,
-    std::optional<TMetricsConfig> metricsConfig)
+    std::optional<TMetricsConfig> metricsConfig,
+    std::optional<TCompressionConfig> compressionConfig)
     : BlobCodec(GetCompressionCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
+    , Codec(codec)
+    , CompressionConfig(PrepareCompressionConfig(std::move(compressionConfig)))
 {}
+
+TResultOrError<TCompressedBlob> TBlobCompressor::CompressBlobIfNeeded(
+    std::span<const TBlockDataRef> blobPayload,
+    bool isSsd,
+    const NKikimr::TBlobStorageGroupType& groupType,
+    NKikimr::TErasureType::ECrcMode crcMode) const
+{
+    if (!CompressionConfig) {
+        return MakeError(S_ALREADY);
+    }
+    const auto& config = *CompressionConfig;
+    if (config.ChunkSize > Max<ui32>()) {
+        return MakeError(E_ARGUMENT, "Compression chunk size exceeds ui32");
+    }
+    if (groupType.GetErasure() >= NKikimr::TErasureType::ErasureSpeciesCount) {
+        return MakeError(E_ARGUMENT, "Invalid target blob storage group type");
+    }
+    if (crcMode != NKikimr::TErasureType::CrcModeNone &&
+        crcMode != NKikimr::TErasureType::CrcModeWholePart)
+    {
+        return MakeError(E_ARGUMENT, "Invalid blob CRC mode");
+    }
+    const ui64 originalSize = blobPayload.size() * ui64(config.BlockSize);
+    if (originalSize > Max<ui32>()) {
+        return MakeError(E_ARGUMENT, "Uncompressed blob size exceeds ui32");
+    }
+    const ui64 originalPartSize =
+        groupType.MaxPartSize(crcMode, static_cast<ui32>(originalSize)) +
+        config.HugeBlobHeaderSize;
+    const ui32 hugeBlobThreshold =
+        isSsd ? config.MinHugeBlobPartSizeSSD : config.MinHugeBlobPartSizeHDD;
+    const bool isHuge = originalPartSize >= hugeBlobThreshold;
+    if (isHuge && config.HugeBlobSlotSizes.empty()) {
+        return MakeError(S_ALREADY);
+    }
+    auto compressed = NStorage::CompressBlob(
+        config.BlockSize,
+        static_cast<ui32>(config.ChunkSize),
+        Codec,
+        blobPayload);
+    if (HasError(compressed.GetError())) {
+        return compressed.GetError();
+    }
+
+    const ui64 compressedSize = compressed.GetResult().Data.size();
+    bool keepCompressed = false;
+    if (isHuge) {
+        const ui64 compressedPartSize =
+            groupType.MaxPartSize(crcMode, static_cast<ui32>(compressedSize)) +
+            config.HugeBlobHeaderSize;
+        keepCompressed = ShouldKeepByHugeSlots(
+            originalPartSize,
+            compressedPartSize,
+            hugeBlobThreshold,
+            config.HugeBlobSlotSizes);
+    } else {
+        keepCompressed = ShouldKeepByMinSavings(
+            originalSize,
+            compressedSize,
+            config.MinSavingsPercent);
+    }
+    if (!keepCompressed) {
+        return MakeError(S_ALREADY);
+    }
+    return compressed;
+}
 
 void TBlobCompressor::CalculateCompressionMetrics(
     const TPartialBlobId& blobId,

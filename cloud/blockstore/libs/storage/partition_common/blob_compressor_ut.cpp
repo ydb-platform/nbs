@@ -13,6 +13,7 @@
 #include <util/system/unaligned_mem.h>
 
 #include <initializer_list>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -25,6 +26,7 @@ using TCompression = NProto::TCompressionMetadata;
 constexpr ui64 TabletId = 123456789;
 constexpr ui32 BlockSize = 4096;
 constexpr ui32 ChunkSize = 32 * 1024;
+constexpr ui32 BlobHeaderSize = 5;
 
 ui32 GetChunkSize(
     const NProto::TCompressionMetadata& compression,
@@ -142,6 +144,463 @@ NProto::TCompressionMetadata MakeCompression()
 
 Y_UNIT_TEST_SUITE(TBlobCompressorTest)
 {
+    Y_UNIT_TEST(ShouldKeepCompressedBlobsOnlyInSmallerHugeSlots)
+    {
+        const NKikimr::TBlobStorageGroupType groupType;
+        const TString payload(ChunkSize + BlockSize, 'a');
+        const auto blocks = MakeSgList(payload);
+        const auto compressed = GetResultOrFail(CompressBlob(
+            BlockSize,
+            ChunkSize,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            blocks));
+        const ui32 compressedPartSize = compressed.Data.size() + BlobHeaderSize;
+        const ui32 originalPartSize = payload.size() + BlobHeaderSize;
+        UNIT_ASSERT(
+            compressedPartSize > 1 && compressedPartSize < originalPartSize);
+
+        struct TCase
+        {
+            TVector<ui32> Slots;
+            bool Accepted;
+        };
+
+        const TCase cases[] = {
+            {{}, false},
+            {{0}, false},
+            {{originalPartSize}, false},
+            {{compressedPartSize, originalPartSize}, true},
+            {{compressedPartSize - 1, originalPartSize}, false},
+            {{compressedPartSize + 1, originalPartSize}, true},
+            {{compressedPartSize, originalPartSize - 1}, false},
+            {{compressedPartSize - 1}, false},
+            {{originalPartSize, originalPartSize + 1}, false},
+            {{originalPartSize + 1,
+              compressedPartSize,
+              originalPartSize,
+              compressedPartSize,
+              0},
+             true},
+            {{originalPartSize, 0, compressedPartSize - 1, originalPartSize},
+             false}};
+        for (const auto& [slots, accepted]: cases) {
+            const TBlobCompressor compressor(
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                std::nullopt,
+                TBlobCompressor::TCompressionConfig{
+                    .BlockSize = BlockSize,
+                    .ChunkSize = ChunkSize,
+                    .HugeBlobSlotSizes = slots});
+            const auto result = compressor.CompressBlobIfNeeded(
+                blocks,
+                true /* isSsd */,
+                groupType);
+            UNIT_ASSERT_VALUES_EQUAL(
+                accepted ? S_OK : S_ALREADY,
+                result.GetError().GetCode());
+            if (accepted) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    compressed.Data,
+                    result.GetResult().Data);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    compressed.Compression.SerializeAsString(),
+                    result.GetResult().Compression.SerializeAsString());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectCompressionThatIncreasesSlotSize)
+    {
+        const NKikimr::TBlobStorageGroupType groupType;
+        TString payload(BlockSize, '\0');
+        TReallyFastRng32 rng(42);
+        for (auto& byte: payload) {
+            byte = static_cast<char>(rng.GenRand());
+        }
+        const auto blocks = MakeSgList(payload);
+        const auto compressed = GetResultOrFail(CompressBlob(
+            BlockSize,
+            ChunkSize,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            blocks));
+        UNIT_ASSERT(compressed.Data.size() > payload.size());
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = BlockSize,
+                .ChunkSize = ChunkSize,
+                .HugeBlobSlotSizes = {
+                    BlockSize + BlobHeaderSize,
+                    static_cast<ui32>(compressed.Data.size()) +
+                        BlobHeaderSize}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            compressor.CompressBlobIfNeeded(blocks, true /* isSsd */, groupType)
+                .GetError()
+                .GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldUseTargetGroupErasureForSlotDecision)
+    {
+        using TErasure = NKikimr::TErasureType;
+
+        struct TCase
+        {
+            TErasure::EErasureSpecies Erasure;
+            ui32 PayloadSize;
+            bool Accepted;
+        };
+
+        const TCase cases[] = {
+            {TErasure::ErasureNone, 128, true},
+            {TErasure::ErasureMirror3dc, 128, true},
+            {TErasure::ErasureMirror3of4, 128, true},
+            {TErasure::Erasure4Plus2Block, 128, false},
+            {TErasure::Erasure4Plus2Block, 129, true},
+            {TErasure::Erasure4Plus2Stripe, 128, false},
+            {TErasure::Erasure4Plus2Stripe, 129, true}};
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = 1,
+                .ChunkSize = 256,
+                .HugeBlobSlotSizes = {32, 64, 128, 256}});
+        for (const auto& [erasure, size, accepted]: cases) {
+            const TString payload(size, 'a');
+            const NKikimr::TBlobStorageGroupType groupType(erasure);
+            // With 4+2, 128 bytes and its compressed payload both need one
+            // 32-byte part. The 129th input byte requires a second block.
+            const auto result = compressor.CompressBlobIfNeeded(
+                MakeSgList(payload, 1),
+                true /* isSsd */,
+                groupType);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                accepted ? S_OK : S_ALREADY,
+                result.GetError().GetCode(),
+                groupType.ToString() << ": " << size);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAccountForEncodedPartCrc)
+    {
+        using TErasure = NKikimr::TErasureType;
+        const NKikimr::TBlobStorageGroupType groupType(
+            TErasure::Erasure4Plus2Block);
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = 1,
+                .ChunkSize = 256,
+                .HugeBlobSlotSizes = {32 + BlobHeaderSize, 80, 256}});
+        const TString payload(256, 'a');
+        // Parts occupy 32 and 64 bytes plus the header without CRC. Adding a
+        // four-byte CRC moves the compressed part into the original's slot.
+        for (const auto crcMode:
+             {TErasure::CrcModeNone, TErasure::CrcModeWholePart})
+        {
+            const auto result = compressor.CompressBlobIfNeeded(
+                MakeSgList(payload, 1),
+                true /* isSsd */,
+                groupType,
+                crcMode);
+            UNIT_ASSERT_VALUES_EQUAL(
+                crcMode == TErasure::CrcModeNone ? S_OK : S_ALREADY,
+                result.GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAccountForBlobHeaderInHugeSlotDecisions)
+    {
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::Erasure4Plus2Block);
+        const TString payload(256, 'a');
+        const auto blocks = MakeSgList(payload, 1);
+
+        struct TCase
+        {
+            ui32 HeaderSize;
+            bool Accepted;
+        };
+
+        const TCase cases[] = {
+            {0, true},
+            {BlobHeaderSize, true},
+            {BlobHeaderSize + 1, false},
+            {Max<ui32>(), false}};
+        for (const auto& [headerSize, accepted]: cases) {
+            const TBlobCompressor compressor(
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                std::nullopt,
+                TBlobCompressor::TCompressionConfig{
+                    .BlockSize = 1,
+                    .ChunkSize = 256,
+                    .HugeBlobSlotSizes = {32 + BlobHeaderSize, 80},
+                    .HugeBlobHeaderSize = headerSize});
+            // The compressed part fits the 37-byte slot exactly with a
+            // five-byte header. A larger header moves it into the original's
+            // slot. Oversized headers must not wrap part sizes around ui32.
+            const auto result = compressor.CompressBlobIfNeeded(
+                blocks,
+                true /* isSsd */,
+                groupType);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                accepted ? S_OK : S_ALREADY,
+                result.GetError().GetCode(),
+                headerSize);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSelectHugeBlobPartSizeForMediaKind)
+    {
+        const NKikimr::TBlobStorageGroupType groupType(
+            NKikimr::TErasureType::Erasure4Plus2Block);
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = 1,
+                .ChunkSize = 256,
+                .HugeBlobSlotSizes = {32 + BlobHeaderSize, 64 + BlobHeaderSize},
+                .MinHugeBlobPartSizeHDD = 128,
+                .MinHugeBlobPartSizeSSD = 32 + BlobHeaderSize,
+                .MinSavingsPercent = 100});
+        const TString payload(256, 'a');
+        const auto blocks = MakeSgList(payload, 1);
+        // Encoded parts shrink from 64 to 32 bytes, plus the header. SSD
+        // accepts the smaller slot; HDD treats the original as non-huge and
+        // uses percent.
+        for (const bool isSsd: {false, true}) {
+            const auto result =
+                compressor.CompressBlobIfNeeded(blocks, isSsd, groupType);
+            UNIT_ASSERT_VALUES_EQUAL(
+                isSsd ? S_OK : S_ALREADY,
+                result.GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectCompressionThatTurnsHugeBlobsIntoNonHugeBlobs)
+    {
+        using TErasure = NKikimr::TErasureType;
+        const TString payload(256, 'a');
+        const auto blocks = MakeSgList(payload, 1);
+        const auto compressed = GetResultOrFail(CompressBlob(
+            1,
+            256,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            blocks));
+        for (const auto erasure:
+             {TErasure::ErasureMirror3dc, TErasure::Erasure4Plus2Block})
+        {
+            const NKikimr::TBlobStorageGroupType groupType(erasure);
+            for (const auto crcMode:
+                 {TErasure::CrcModeNone, TErasure::CrcModeWholePart})
+            {
+                const ui32 originalPartSize =
+                    groupType.MaxPartSize(crcMode, payload.size()) +
+                    BlobHeaderSize;
+                const ui32 compressedPartSize =
+                    groupType.MaxPartSize(crcMode, compressed.Data.size()) +
+                    BlobHeaderSize;
+                UNIT_ASSERT(compressedPartSize > 1);
+                UNIT_ASSERT(compressedPartSize < originalPartSize);
+
+                struct TCase
+                {
+                    ui32 Threshold;
+                    ui64 MinSavingsPercent;
+                    bool Accepted;
+                };
+
+                const TCase cases[] = {
+                    {0, 100, true},
+                    {compressedPartSize - 1, 100, true},
+                    {compressedPartSize, 100, true},
+                    {compressedPartSize + 1, 0, false},
+                    {originalPartSize, 0, false},
+                    {originalPartSize + 1, 0, true},
+                    {originalPartSize + 1, 100, false}};
+                for (const auto& [threshold, minSavingsPercent, accepted]:
+                     cases)
+                {
+                    const TBlobCompressor compressor(
+                        NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                        std::nullopt,
+                        TBlobCompressor::TCompressionConfig{
+                            .BlockSize = 1,
+                            .ChunkSize = 256,
+                            .HugeBlobSlotSizes =
+                                {compressedPartSize, originalPartSize},
+                            .MinHugeBlobPartSizeSSD = threshold,
+                            .MinSavingsPercent = minSavingsPercent});
+                    const auto result = compressor.CompressBlobIfNeeded(
+                        blocks,
+                        true /* isSsd */,
+                        groupType,
+                        crcMode);
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        accepted ? S_OK : S_ALREADY,
+                        result.GetError().GetCode(),
+                        groupType.ToString()
+                            << ": threshold=" << threshold
+                            << ", crc=" << static_cast<ui32>(crcMode)
+                            << ", minSavings=" << minSavingsPercent);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseMinSavingsPercentForNonHugeBlobs)
+    {
+        const NKikimr::TBlobStorageGroupType groupType;
+        const TString payload(100, 'a');
+        const auto blocks = MakeSgList(payload, 1);
+        const auto compressed = GetResultOrFail(CompressBlob(
+            1,
+            100,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            blocks));
+        UNIT_ASSERT(compressed.Data.size() < payload.size());
+        const ui64 savingsPercent = payload.size() - compressed.Data.size();
+
+        struct TCase
+        {
+            ui64 MinSavingsPercent;
+            bool Accepted;
+        };
+
+        const TCase cases[] = {
+            {0, true},
+            {savingsPercent - 1, true},
+            {savingsPercent, false},
+            {savingsPercent + 1, false},
+            {100, false},
+            {Max<ui64>(), false}};
+        for (const auto& [minSavingsPercent, accepted]: cases) {
+            const TBlobCompressor compressor(
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                std::nullopt,
+                TBlobCompressor::TCompressionConfig{
+                    .BlockSize = 1,
+                    .ChunkSize = 100,
+                    .MinHugeBlobPartSizeSSD = 101 + BlobHeaderSize,
+                    .MinSavingsPercent = minSavingsPercent});
+            const auto result = compressor.CompressBlobIfNeeded(
+                blocks,
+                true /* isSsd */,
+                groupType);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                accepted ? S_OK : S_ALREADY,
+                result.GetError().GetCode(),
+                minSavingsPercent);
+            if (accepted) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    compressed.Data,
+                    result.GetResult().Data);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldValidateWriteCompressionGroupSettings)
+    {
+        using TErasure = NKikimr::TErasureType;
+        const NKikimr::TBlobStorageGroupType groupType;
+        const NKikimr::TBlobStorageGroupType invalidGroup(
+            TErasure::ErasureSpeciesCount);
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = BlockSize,
+                .ChunkSize = ChunkSize,
+                .HugeBlobSlotSizes = {BlockSize}});
+        const TString payload(BlockSize, 'a');
+        const auto blocks = MakeSgList(payload);
+        AssertArgumentError(
+            [&]
+            {
+                return compressor
+                    .CompressBlobIfNeeded(
+                        blocks,
+                        true /* isSsd */,
+                        invalidGroup)
+                    .GetError();
+            });
+        AssertArgumentError(
+            [&]
+            {
+                return compressor
+                    .CompressBlobIfNeeded(
+                        blocks,
+                        true /* isSsd */,
+                        groupType,
+                        static_cast<TErasure::ECrcMode>(2))
+                    .GetError();
+            });
+
+        const TBlobCompressor oversizedCompressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = Max<ui32>(),
+                .ChunkSize = Max<ui32>(),
+                .HugeBlobSlotSizes = {Max<ui32>()}});
+        const TSgList oversizedBlocks = {
+            TBlockDataRef::CreateZeroBlock(Max<ui32>()),
+            TBlockDataRef::CreateZeroBlock(Max<ui32>())};
+        AssertArgumentError(
+            [&]
+            {
+                return oversizedCompressor
+                    .CompressBlobIfNeeded(
+                        oversizedBlocks,
+                        true /* isSsd */,
+                        groupType)
+                    .GetError();
+            });
+    }
+
+    Y_UNIT_TEST(ShouldValidateWriteCompressionSettings)
+    {
+        const NKikimr::TBlobStorageGroupType groupType;
+        const TString payload(BlockSize, 'a');
+        for (const ui64 chunkSize: {ui64(BlockSize + 1), ui64(Max<ui32>()) + 1})
+        {
+            const TBlobCompressor compressor(
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                std::nullopt,
+                TBlobCompressor::TCompressionConfig{
+                    .BlockSize = BlockSize,
+                    .ChunkSize = chunkSize,
+                    .HugeBlobSlotSizes = {BlockSize}});
+            AssertArgumentError(
+                [&]
+                {
+                    return compressor
+                        .CompressBlobIfNeeded(
+                            MakeSgList(payload),
+                            true /* isSsd */,
+                            groupType)
+                        .GetError();
+                });
+        }
+        const TBlobCompressor estimator(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            std::nullopt);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            estimator
+                .CompressBlobIfNeeded(
+                    MakeSgList(payload),
+                    true /* isSsd */,
+                    groupType)
+                .GetError()
+                .GetCode());
+    }
+
     Y_UNIT_TEST(ShouldParseStorageCodecNames)
     {
         struct TCase
@@ -240,7 +699,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         for (const auto& config: configs) {
             const TBlobCompressor compressor(
                 NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
-                config);
+                config,
+                std::nullopt);
             compressor.CalculateCompressionMetrics({}, payload);
         }
     }
@@ -266,7 +726,8 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 .CompressionRate = 1,
                 .BlockSize = logicalBlockSize,
                 .ChunkSizes = chunkSizes,
-                .PartCounters = counters});
+                .PartCounters = counters},
+            std::nullopt);
 
         compressor.CalculateCompressionMetrics({}, payload);
         counters->Access(

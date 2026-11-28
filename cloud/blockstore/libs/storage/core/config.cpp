@@ -236,6 +236,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::ERequestSplitterPolicy,                                        \
         NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
 /* Safety-critical section end.                                              */\
+                                                                               \
+    xxx(HugeBlobSlotSizes,              TVector<ui32>, {}                     )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -812,6 +814,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksCompactionByteCountersEnabled,   bool,       false         )\
     xxx(IgnorePartitionCountInMaxBlobsPerRange,     bool,       false         )\
     xxx(VolumeBalancerEnabled,                      bool,       false         )\
+                                                                               \
+    xxx(MergedBlobsCompressionEnabled,             bool,      false           )\
+    xxx(MergedBlobsCompressionChunkSize,           ui64,      32_KB           )\
+    xxx(MergedBlobsCompressionMinSavingsPercent,   ui64,      0               )\
+    xxx(MinHugeBlobPartSizeSSD,                    ui32,      64_KB           )\
+    xxx(MinHugeBlobPartSizeHDD,                    ui32,      512_KB          )\
+    xxx(HugeBlobHeaderSize,                        ui32,      5               )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -859,6 +868,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(CompactionStatsTracker)                                                \
     xxx(MixedBlocksCountCompactionSSD)                                         \
     xxx(MixedBlocksCountCompactionHDD)                                         \
+    xxx(MergedBlobsCompression)
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -906,6 +916,12 @@ TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
     return TVector<TString>(value.begin(), value.end());
+}
+
+template <>
+TVector<ui32> ConvertValue(const google::protobuf::RepeatedField<ui32>& value)
+{
+    return TVector<ui32>(value.begin(), value.end());
 }
 
 template <>
@@ -994,7 +1010,8 @@ void DumpImpl(const T& t, IOutputStream& os)
     os << t;
 }
 
-void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+template <typename T>
+void DumpImpl(const TVector<T>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
         if (i) {
