@@ -1073,77 +1073,59 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 // TEST_SHOULD_ZERO
 
 #define TEST_SHOULD_NOT_READ(clientId)                                         \
-        try {                                                                  \
-            NProto::TReadDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
+    {                                                                          \
+        NProto::TReadDeviceBlocksRequest request;                              \
+        request.SetDeviceUUID("uuid-1");                                       \
+        request.SetStartIndex(1);                                              \
+        request.SetBlockSize(4096);                                            \
+        request.SetBlocksCount(10);                                            \
+        request.MutableHeaders()->SetClientId(clientId);                       \
                                                                                \
-            auto response =                                                    \
-                state->Read(                                                   \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_READ
+        auto response =                                                        \
+            state->Read(Now(), std::move(request)).GetValue(WaitTimeout);      \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            E_BS_INVALID_SESSION,                                              \
+            response.GetError().GetCode(),                                     \
+            response.GetError().GetMessage());                                 \
+    }                                                                          \
+    // TEST_SHOULD_NOT_READ
 
 #define TEST_SHOULD_NOT_WRITE(clientId)                                        \
-        try {                                                                  \
-            NProto::TWriteDeviceBlocksRequest request;                         \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
+    {                                                                          \
+        NProto::TWriteDeviceBlocksRequest request;                             \
+        request.SetDeviceUUID("uuid-1");                                       \
+        request.SetStartIndex(1);                                              \
+        request.SetBlockSize(4096);                                            \
+        request.MutableHeaders()->SetClientId(clientId);                       \
                                                                                \
-            ResizeIOVector(*request.MutableBlocks(), 10, 4096);                \
+        ResizeIOVector(*request.MutableBlocks(), 10, 4096);                    \
                                                                                \
-            auto response =                                                    \
-                state->Write(                                                  \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_WRITE
+        auto response =                                                        \
+            state->Write(Now(), std::move(request)).GetValue(WaitTimeout);     \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            E_BS_INVALID_SESSION,                                              \
+            response.GetError().GetCode(),                                     \
+            response.GetError().GetMessage());                                 \
+    }                                                                          \
+    // TEST_SHOULD_NOT_WRITE
 
 #define TEST_SHOULD_NOT_ZERO(clientId)                                         \
-        try {                                                                  \
-            NProto::TZeroDeviceBlocksRequest request;                          \
-            request.SetDeviceUUID("uuid-1");                                   \
-            request.SetStartIndex(1);                                          \
-            request.SetBlockSize(4096);                                        \
-            request.SetBlocksCount(10);                                        \
-            request.MutableHeaders()->SetClientId(clientId);                   \
+    {                                                                          \
+        NProto::TZeroDeviceBlocksRequest request;                              \
+        request.SetDeviceUUID("uuid-1");                                       \
+        request.SetStartIndex(1);                                              \
+        request.SetBlockSize(4096);                                            \
+        request.SetBlocksCount(10);                                            \
+        request.MutableHeaders()->SetClientId(clientId);                       \
                                                                                \
-            auto response =                                                    \
-                state->WriteZeroes(                                            \
-                    Now(),                                                     \
-                    std::move(request)                                         \
-                ).GetValue(WaitTimeout);                                       \
-            UNIT_ASSERT(false);                                                \
-        } catch (const TServiceError& e) {                                     \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                E_BS_INVALID_SESSION,                                          \
-                e.GetCode(),                                                   \
-                e.GetMessage()                                                 \
-            );                                                                 \
-        }                                                                      \
-// TEST_SHOULD_NOT_READ
+        auto response = state->WriteZeroes(Now(), std::move(request))          \
+                            .GetValue(WaitTimeout);                            \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
+            E_BS_INVALID_SESSION,                                              \
+            response.GetError().GetCode(),                                     \
+            response.GetError().GetMessage());                                 \
+    }                                                                          \
+    // TEST_SHOULD_NOT_ZERO
 
 #define TEST_SHOULD_ACQUIRE(clientId, ts, mode, seqNo)                         \
         try {                                                                  \
@@ -1912,36 +1894,24 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         };
 
         // should reject a request with a wrong client id
-        UNIT_ASSERT_EXCEPTION_SATISFIES(
-            write("unknown", devices[1]),
-            TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_INVALID_SESSION,
+            write("unknown", devices[1]).GetError().GetCode());
 
         // should reject a request with a wrong client id
-        UNIT_ASSERT_EXCEPTION_SATISFIES(
-            write("reader-2", devices[0]),
-            TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_INVALID_SESSION,
+            write("reader-2", devices[0]).GetError().GetCode());
 
         // should reject a request with a wrong client id
-        UNIT_ASSERT_EXCEPTION_SATISFIES(
-            read("reader-2", devices[1]),
-            TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_INVALID_SESSION,
+            read("reader-2", devices[1]).GetError().GetCode());
 
         // should reject a write request for the read only session
-        UNIT_ASSERT_EXCEPTION_SATISFIES(
-            write("reader-1", devices[1]),
-            TServiceError,
-            [] (auto& e) {
-                return e.GetCode() == E_BS_INVALID_SESSION;
-            });
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_INVALID_SESSION,
+            write("reader-1", devices[1]).GetError().GetCode());
 
         // should be ok
 
@@ -1999,30 +1969,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         UNIT_ASSERT_EQUAL(0, *restoreError);
 
         {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                write("writer-1", devices[0]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                write("writer-1", devices[0]).GetError().GetCode());
         }
 
         {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                write("writer-1", devices[1]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_BS_INVALID_SESSION;
-                });
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                write("writer-1", devices[1]).GetError().GetCode());
         }
 
         {
-            UNIT_ASSERT_EXCEPTION_SATISFIES(
-                read("reader-2", devices[3]),
-                TServiceError,
-                [] (auto& e) {
-                    return e.GetCode() == E_NOT_FOUND;
-                });
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_FOUND,
+                read("reader-2", devices[3]).GetError().GetCode());
         }
 
         // should be ok

@@ -204,16 +204,10 @@ public:
     }
 
 private:
-    TStorageAdapterPtr GetDeviceStorageAdapter(
+    TResultOrError<TStorageAdapterPtr> GetDeviceStorageAdapter(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
-
-    TStorageAdapterPtr GetDeviceStorageAdapterImpl(
-        const TString& uuid,
-        const TString& clientId,
-        const NProto::EVolumeAccessMode accessMode) const;
-    TStorageAdapterPtr GetDeviceStorageAdapterImpl(const TString& uuid) const;
 
     void EnsureAccessToDevices(
         const TVector<TString>& uuids,
