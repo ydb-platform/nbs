@@ -67,6 +67,8 @@ namespace {
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
     xxx(BlobCompressionChunkSizes,      TVector<ui64>,           {}                                     )\
+    xxx(EnableLatencySli,               bool,                    false                                  )\
+    xxx(LatencySliThresholds,           TLatencySliThresholds,   {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
     xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
     xxx(VolumeCriticalEventsReportingMode,                                                               \
@@ -151,6 +153,14 @@ TVector<TSizeInterval> ConvertValue(
     return v;
 }
 
+template <>
+TLatencySliThresholds ConvertValue(
+    const google::protobuf::RepeatedPtrField<
+        NProto::TDiagnosticsConfig::TLatencySliThreshold>& value)
+{
+    return {value.begin(), value.end()};
+}
+
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
@@ -165,6 +175,17 @@ void DumpImpl(const TVector<T>& value, IOutputStream& os)
             os << ",";
         }
         os << ToString(value[i]);
+    }
+}
+
+template <>
+void DumpImpl(const TLatencySliThresholds& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << "{" << value[i].ShortDebugString() << "}";
     }
 }
 
@@ -280,6 +301,20 @@ TDuration GetDowntimeThreshold(
             return config.GetHDDDowntimeThreshold();
         }
     }
+}
+
+TLatencySliConfig TDiagnosticsConfig::GetLatencySliConfig(ui32 mediaKind) const
+{
+    TLatencySliConfig result;
+    result.Enabled = DiagnosticsConfig.GetEnableLatencySli();
+    for (const auto& row: DiagnosticsConfig.GetLatencySliThresholds()) {
+        if (row.HasMediaKind() && ui32(row.GetMediaKind()) == mediaKind) {
+            result.Thresholds[row.GetWrite()].push_back({
+                row.GetStartBytes(), row.GetEndBytes(), row.GetThresholdUs()});
+        }
+    }
+    result.Validate();
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore
