@@ -128,6 +128,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
         }()
             .c_str());
 
+    ReplyToCompletedPendingDeallocations(ctx);
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

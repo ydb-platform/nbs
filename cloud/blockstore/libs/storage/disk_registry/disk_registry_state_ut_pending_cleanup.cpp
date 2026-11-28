@@ -213,6 +213,126 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                 UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
             });
     }
+
+    Y_UNIT_TEST(ShouldRemoveBrokenDevicesFromPendingCleanupOnRegistration)
+    {
+        TTestExecutor executor;
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                db.InitSchema();
+                db.UpdateDirtyDevice("uuid-1", "vol0");
+                db.UpdateDirtyDevice("uuid-2", "vol0");
+            });
+
+        auto agent = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1"), Device("dev-2", "uuid-2")});
+
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({agent})
+                            .WithAgents({agent})
+                            .WithDirtyDevices(
+                                {TDirtyDevice{"uuid-1", "vol0"},
+                                 TDirtyDevice{"uuid-2", "vol0"}})
+                            .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        UNIT_ASSERT(state.HasPendingCleanup("vol0"));
+
+        // The agent reports a broken device.
+        agent.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] = state.RegisterAgent(db, agent, Now());
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+            });
+
+        // "uuid-2" still has to be secure erased.
+        UNIT_ASSERT(state.HasPendingCleanup("vol0"));
+
+        executor.ReadTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDirtyDevice> dirtyDevices;
+                UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+                SortBy(dirtyDevices, [](const auto& x) { return x.Id; });
+
+                UNIT_ASSERT_VALUES_EQUAL(2, dirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL("uuid-1", dirtyDevices[0].Id);
+                UNIT_ASSERT_VALUES_EQUAL("", dirtyDevices[0].DiskId);
+                UNIT_ASSERT_VALUES_EQUAL("uuid-2", dirtyDevices[1].Id);
+                UNIT_ASSERT_VALUES_EQUAL("vol0", dirtyDevices[1].DiskId);
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "vol0",
+                    state.MarkDeviceAsClean(Now(), db, "uuid-2"));
+            });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("vol0"));
+    }
+
+    Y_UNIT_TEST(ShouldNotTieDevicesThatCannotBeErasedToDeallocatedDisk)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1", NProto::DEVICE_STATE_ERROR),
+                Device("dev-2", "uuid-2"),
+                Device("dev-3", "uuid-3"),
+            });
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithAgents({agent})
+                .WithDisks({Disk("vol0", {"uuid-1", "uuid-2", "uuid-3"})})
+                .WithSuspendedDevices({"uuid-2"})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "vol0"));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "vol0"));
+            });
+
+        UNIT_ASSERT(state.HasPendingCleanup("vol0"));
+
+        // Only "uuid-3" is going to be secure erased.
+        executor.ReadTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TDirtyDevice> dirtyDevices;
+                UNIT_ASSERT(db.ReadDirtyDevices(dirtyDevices));
+                SortBy(dirtyDevices, [](const auto& x) { return x.Id; });
+
+                UNIT_ASSERT_VALUES_EQUAL(3, dirtyDevices.size());
+                UNIT_ASSERT_VALUES_EQUAL("", dirtyDevices[0].DiskId);
+                UNIT_ASSERT_VALUES_EQUAL("", dirtyDevices[1].DiskId);
+                UNIT_ASSERT_VALUES_EQUAL("vol0", dirtyDevices[2].DiskId);
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "vol0",
+                    state.MarkDeviceAsClean(Now(), db, "uuid-3"));
+            });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("vol0"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

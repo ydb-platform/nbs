@@ -470,4 +470,19 @@ void TDiskRegistryActor::ReplyToPendingDeallocations(
     PendingDiskDeallocationRequests.erase(it);
 }
 
+void TDiskRegistryActor::ReplyToCompletedPendingDeallocations(
+    const NActors::TActorContext& ctx)
+{
+    TVector<TDiskId> completedDiskIds;
+    for (const auto& [diskId, _]: PendingDiskDeallocationRequests) {
+        if (!State->HasPendingCleanup(diskId)) {
+            completedDiskIds.push_back(diskId);
+        }
+    }
+
+    for (const auto& diskId: completedDiskIds) {
+        ReplyToPendingDeallocations(ctx, diskId);
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

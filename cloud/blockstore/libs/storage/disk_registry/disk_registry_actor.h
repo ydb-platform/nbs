@@ -250,6 +250,12 @@ private:
         TVector<TRequestInfoPtr>& requestInfos,
         NProto::TError error);
 
+    // Replies to the postponed deallocations of disks that have no devices
+    // left in the pending cleanup. Should be called after every transaction
+    // that can remove devices from the pending cleanup.
+    void ReplyToCompletedPendingDeallocations(
+        const NActors::TActorContext& ctx);
+
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 
     void OnDiskAcquired(
