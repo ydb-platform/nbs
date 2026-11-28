@@ -62,6 +62,8 @@ type RawValue = ydb_types.RawValue
 
 func OptionalValue(v Value) Value { return ydb_types.OptionalValue(v) }
 
+func NullValue(t Type) Value { return ydb_types.NullValue(t) }
+
 func TupleValue(values ...Value) Value {
 	return ydb_types.TupleValue(values...)
 }
@@ -174,6 +176,16 @@ func OptionalWithDefault(
 ) ydb_named.Value {
 
 	return ydb_named.OptionalWithDefault(columnName, destinationValueReference)
+}
+
+// Scans nullable column into a pointer: nil is written if the value is NULL.
+// NOTE: |destinationValueReference| must be a pointer to a pointer.
+func OptionalOrNil(
+	columnName string,
+	destinationValueReference interface{},
+) ydb_named.Value {
+
+	return ydb_named.Optional(columnName, destinationValueReference)
 }
 
 func ValueParam(name string, v Value) ydb_table.ParameterOption {
