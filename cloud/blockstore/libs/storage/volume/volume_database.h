@@ -110,10 +110,15 @@ public:
         const TString& shadowDiskId,
         EShadowDiskState shadowDiskState,
         const TString& error);
+    bool ReadShadowDiskState(
+        ui64 requestId,
+        EShadowDiskState& shadowDiskState,
+        ui64& processedBlockCount);
     void UpdateShadowDiskState(
         ui64 requestId,
         ui64 processedBlockCount,
-        EShadowDiskState shadowDiskState);
+        EShadowDiskState shadowDiskState,
+        const TString& errorMessage);
     bool ReadCheckpointRequests(
         const THashMap<TString, TInstant>& deletedCheckpoints,
         TVector<TCheckpointRequest>& requests,

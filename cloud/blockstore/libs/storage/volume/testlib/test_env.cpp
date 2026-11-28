@@ -688,7 +688,8 @@ TVolumeClient::CreateUpdateShadowDiskStateRequest(
     return make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
         std::move(checkpointId),
         reason,
-        processedBlockCount);
+        processedBlockCount,
+        TString());
 }
 
 std::unique_ptr<TEvVolumePrivate::TEvReadMetaHistoryRequest>

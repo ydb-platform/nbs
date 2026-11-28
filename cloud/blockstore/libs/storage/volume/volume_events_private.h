@@ -344,6 +344,7 @@ struct TEvVolumePrivate
         NProto::TError Error;
         TString ClientId;
         TDevices Devices;
+        TDevices AcquiredDevices;
 
         explicit TShadowDiskAcquired(NProto::TError error)
             : Error(std::move(error))
@@ -366,14 +367,17 @@ struct TEvVolumePrivate
         TString CheckpointId;
         EReason Reason = EReason::FillError;
         ui64 ProcessedBlockCount = 0;
+        TString ErrorMessage;
 
         TUpdateShadowDiskStateRequest(
                 TString checkpointId,
                 EReason reason,
-                ui64 processedBlockCount)
+                ui64 processedBlockCount,
+                TString errorMessage)
             : CheckpointId(std::move(checkpointId))
             , Reason(reason)
             , ProcessedBlockCount(processedBlockCount)
+            , ErrorMessage(std::move(errorMessage))
         {}
     };
 

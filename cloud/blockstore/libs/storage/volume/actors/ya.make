@@ -26,6 +26,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/partition_nonrepl
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
+    cloud/blockstore/libs/storage/volume/model
 
     contrib/ydb/library/actors/core
     library/cpp/lwtrace

@@ -348,9 +348,10 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         // Advance fill progress
         store.SetShadowDiskState(
-            checkpointId,
+            requestId,
             EShadowDiskState::Preparing,
-            512);
+            512,
+            TString());
 
         checkpoint = store.GetCheckpoint(checkpointId);
 
@@ -361,9 +362,10 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         // Finish fill progress
         store.SetShadowDiskState(
-            checkpointId,
+            requestId,
             EShadowDiskState::Ready,
-            1024);
+            1024,
+            TString());
 
         checkpoint = store.GetCheckpoint(checkpointId);
 

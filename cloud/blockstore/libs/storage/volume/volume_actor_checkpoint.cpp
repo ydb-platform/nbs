@@ -1851,10 +1851,12 @@ bool TVolumeActor::PrepareUpdateShadowDiskState(
     TTxVolume::TUpdateShadowDiskState& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 
-    return true;
+    TVolumeDatabase db(tx.DB);
+    return db.ReadShadowDiskState(
+        args.RequestId,
+        args.PreviousState,
+        args.PreviousProcessedBlockCount);
 }
 
 void TVolumeActor::ExecuteUpdateShadowDiskState(
@@ -1868,42 +1870,65 @@ void TVolumeActor::ExecuteUpdateShadowDiskState(
         args.ShadowDiskState >= EShadowDiskState::None &&
         args.ShadowDiskState <= EShadowDiskState::Error);
 
+    if (!args.CanUpdate()) {
+        return;
+    }
+
     TVolumeDatabase db(tx.DB);
     db.UpdateShadowDiskState(
         args.RequestId,
         args.ProcessedBlockCount,
-        args.ShadowDiskState);
+        args.ShadowDiskState,
+        args.ErrorMessage);
 }
 
 void TVolumeActor::CompleteUpdateShadowDiskState(
     const TActorContext& ctx,
     TTxVolume::TUpdateShadowDiskState& args)
 {
-    const TCheckpointRequest& request =
-        State->GetCheckpointStore().GetRequestById(args.RequestId);
+    const bool updated = args.CanUpdate();
+    if (updated) {
+        const TCheckpointRequest& request =
+            State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s For checkpoint %s shadow disk %s state updated. Processed "
-        "blocks: %lu, state: %s",
-        LogTitle.GetWithTime().c_str(),
-        request.CheckpointId.Quote().c_str(),
-        request.ShadowDiskId.Quote().c_str(),
-        args.ProcessedBlockCount,
-        ToString(args.ShadowDiskState).c_str());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s For checkpoint %s shadow disk %s state updated. Processed "
+            "blocks: %lu, state: %s",
+            LogTitle.GetWithTime().c_str(),
+            request.CheckpointId.Quote().c_str(),
+            request.ShadowDiskId.Quote().c_str(),
+            args.ProcessedBlockCount,
+            ToString(args.ShadowDiskState).c_str());
 
-    State->GetCheckpointStore().SetShadowDiskState(
-        request.CheckpointId,
-        args.ShadowDiskState,
-        args.ProcessedBlockCount);
+        State->GetCheckpointStore().SetShadowDiskState(
+            args.RequestId,
+            args.ShadowDiskState,
+            args.ProcessedBlockCount,
+            args.ErrorMessage);
 
+        if (args.ShadowDiskState == EShadowDiskState::Error) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Shadow disk for checkpoint %s failed: %s",
+                LogTitle.GetWithTime().c_str(),
+                request.CheckpointId.c_str(),
+                args.ErrorMessage.c_str());
+        }
+    }
+
+    const auto previousState = args.PreviousState == EShadowDiskState::None
+                                   ? EShadowDiskState::Error
+                                   : args.PreviousState;
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
-            args.ShadowDiskState,
-            args.ProcessedBlockCount));
+            updated ? args.ShadowDiskState : previousState,
+            updated ? args.ProcessedBlockCount
+                    : args.PreviousProcessedBlockCount));
 }
 
 void TVolumeActor::HandleUpdateShadowDiskState(
@@ -1920,23 +1945,22 @@ void TVolumeActor::HandleUpdateShadowDiskState(
     auto checkpointInfo =
         State->GetCheckpointStore().GetCheckpoint(msg->CheckpointId);
 
-    auto reply = [&](EShadowDiskState newState)
+    auto reply = [&](EShadowDiskState newState, ui64 processedBlockCount)
     {
         auto response = std::make_unique<
             TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
             newState,
-            msg->ProcessedBlockCount);
+            processedBlockCount);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
     if (!checkpointInfo) {
-        reply(EShadowDiskState::Error);
+        reply(EShadowDiskState::Error, 0);
         return;
     }
 
-    auto currentShadowDiskState = checkpointInfo->ShadowDiskState;
-    if (currentShadowDiskState == EShadowDiskState::Error) {
-        reply(EShadowDiskState::Error);
+    if (checkpointInfo->ShadowDiskState == EShadowDiskState::Error) {
+        reply(EShadowDiskState::Error, checkpointInfo->ProcessedBlockCount);
         return;
     }
 
@@ -1944,10 +1968,6 @@ void TVolumeActor::HandleUpdateShadowDiskState(
 
     switch (msg->Reason) {
         case EReason::FillProgressUpdate: {
-            if (currentShadowDiskState == EShadowDiskState::Ready) {
-                reply(EShadowDiskState::Ready);
-                return;
-            }
             newShadowDiskState = EShadowDiskState::Preparing;
         } break;
         case EReason::FillCompleted: {
@@ -1964,7 +1984,8 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         std::move(requestInfo),
         checkpointInfo->RequestId,
         newShadowDiskState,
-        msg->ProcessedBlockCount);
+        msg->ProcessedBlockCount,
+        msg->ErrorMessage);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -179,9 +179,10 @@ public:
         EShadowDiskState shadowDiskState);
 
     void SetShadowDiskState(
-        const TString& checkpointId,
+        ui64 requestId,
         EShadowDiskState shadowDiskState,
-        ui64 processedBlockCount);
+        ui64 processedBlockCount,
+        const TString& errorMessage);
     void ShadowActorCreated(const TString& checkpointId);
     void ShadowActorDestroyed(const TString& checkpointId);
     [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;
@@ -189,6 +190,8 @@ public:
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
+    [[nodiscard]] bool IsCheckpointBeingDeleted(
+        const TString& checkpointId) const;
     // CreateWithoutData requests are intentionally ignored because they do not
     // retain checkpoint data and therefore do not restrict volume operations.
     [[nodiscard]] bool HasCheckpointCreationRequest() const;

@@ -11,6 +11,7 @@ SRCS(
     requests_inflight_ut.cpp
     requests_time_tracker_ut.cpp
     retry_policy_ut.cpp
+    shadow_disk_read_availability_ut.cpp
     stripe_ut.cpp
     volume_params_ut.cpp
     volume_shaping_throttler_ut.cpp
