@@ -80,6 +80,25 @@ func (c *ExecutionContextMock) FinishWithPreparation(
 	return args.Error(0)
 }
 
+func (c *ExecutionContextMock) FinishCancellationWithPreparation(
+	ctx context.Context,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, preparation)
+	return args.Error(0)
+}
+
+func (c *ExecutionContextMock) FinishWithNonCancellableErrorAndPreparation(
+	ctx context.Context,
+	taskError error,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, taskError, preparation)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewExecutionContextMock() *ExecutionContextMock {

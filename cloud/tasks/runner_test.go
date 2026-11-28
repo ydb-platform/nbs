@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage/mocks"
 	grpc_codes "google.golang.org/grpc/codes"
@@ -2109,4 +2110,315 @@ func TestRunnerForRunTaskRetryPolicy(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestRunnerFinishCancellationWithPreparation(t *testing.T) {
+	operationError := errors.NewDetailedErrorFull(
+		fmt.Errorf("operation failed"),
+		&errors.ErrorDetails{Code: 42, Message: "operation failure"},
+		true, // Silent.
+	)
+
+	for _, test := range []struct {
+		name          string
+		originalError error
+		result        error
+	}{
+		{
+			name: "cancel",
+		},
+		{
+			name:          "cancel_after_failure",
+			originalError: operationError,
+		},
+		{
+			name:          "cancel_with_terminal_error",
+			originalError: operationError,
+			result: errors.NewNonRetriableError(
+				assert.AnError,
+			),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := newContext()
+			taskStorage := mocks.NewStorageMock()
+			task := NewTaskMock()
+			state := storage.TaskState{
+				ID:           taskID,
+				GenerationID: 42,
+				Status:       storage.TaskStatusCancelling,
+				State:        []byte{1},
+			}
+			if test.originalError != nil {
+				state.SetError(test.originalError)
+			}
+
+			execCtx := newTestExecutionContext(
+				task, taskStorage, state,
+			)
+			state.Status = storage.TaskStatusCancelled
+			state.State = []byte{2}
+
+			tx := &persistence.Transaction{}
+			preparationCalls := 0
+			preparation := func(
+				ctx context.Context,
+				actualTx *persistence.Transaction,
+			) error {
+
+				require.Same(t, tx, actualTx)
+				preparationCalls++
+				return nil
+			}
+			task.On("Save").Return(state.State, nil).Once()
+			taskStorage.On(
+				"UpdateTaskWithPreparation",
+				mock.Anything,
+				mock.MatchedBy(matchesState(t, state)),
+				mock.Anything,
+			).Run(func(args mock.Arguments) {
+				prepare := args.Get(2).(func(
+					context.Context,
+					*persistence.Transaction,
+				) error)
+				err := prepare(
+					args.Get(0).(context.Context), tx,
+				)
+				require.NoError(t, err)
+			}).Return(state, nil).Once()
+
+			complete := execCtx.FinishCancellationWithPreparation
+			task.On(
+				"Cancel", mock.Anything, execCtx,
+			).Run(func(args mock.Arguments) {
+				ctx := args.Get(0).(context.Context)
+				err := complete(ctx, preparation)
+				require.NoError(t, err)
+
+				// Do not repeat preparation.
+				err = complete(ctx, preparation)
+				require.NoError(t, err)
+			}).Return(test.result).Once()
+
+			runnerMetrics := &mockRunnerMetrics{}
+			if test.result != nil {
+				runnerMetrics.On(
+					"OnExecutionError", test.result,
+				).Return().Once()
+			}
+
+			runner := runnerForCancel{metrics: runnerMetrics}
+			runner.executeTask(ctx, execCtx, task)
+
+			require.Equal(t, 1, preparationCalls)
+			require.Equal(t, state, execCtx.taskState)
+			mock.AssertExpectationsForObjects(
+				t, task, taskStorage, runnerMetrics,
+			)
+		})
+	}
+}
+
+func TestExecutionContextFinishCancellationRetry(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		saveError        error
+		preparationError error
+		updateError      error
+	}{
+		{
+			name:      "serialization",
+			saveError: assert.AnError,
+		},
+		{
+			name:             "preparation",
+			preparationError: assert.AnError,
+			updateError:      assert.AnError,
+		},
+		{
+			name:        "storage",
+			updateError: errors.NewRetriableError(assert.AnError),
+		},
+		{
+			name:        "generation",
+			updateError: errors.NewWrongGenerationError(),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := newContext()
+			taskStorage := mocks.NewStorageMock()
+			task := NewTaskMock()
+			initialState := storage.TaskState{
+				ID:           taskID,
+				GenerationID: 42,
+				Status:       storage.TaskStatusCancelling,
+				State:        []byte{1},
+			}
+			initialState.SetError(errors.NewNonRetriableError(
+				assert.AnError,
+			))
+			execCtx := newTestExecutionContext(
+				task, taskStorage, initialState,
+			)
+			state := initialState
+			state.State = []byte{2}
+			state.Status = storage.TaskStatusCancelled
+
+			preparationError := test.preparationError
+			preparation := func(
+				context.Context, *persistence.Transaction,
+			) error {
+
+				return preparationError
+			}
+			if test.saveError != nil {
+				task.On("Save").Return(
+					[]byte(nil), test.saveError,
+				).Once()
+			} else {
+				task.On("Save").Return(state.State, nil).Once()
+				checkState := matchesStateCallback(t, state)
+				taskStorage.On(
+					"UpdateTaskWithPreparation",
+					ctx,
+					mock.Anything,
+					mock.Anything,
+				).Run(func(args mock.Arguments) {
+					checkState(args)
+					prepare := args.Get(2).(func(
+						context.Context,
+						*persistence.Transaction,
+					) error)
+					err := prepare(
+						ctx, &persistence.Transaction{},
+					)
+					require.Equal(
+						t, test.preparationError, err,
+					)
+				}).Return(
+					storage.TaskState{}, test.updateError,
+				).Once()
+			}
+
+			err := execCtx.FinishCancellationWithPreparation(
+				ctx, preparation,
+			)
+			expectedError := test.updateError
+			if test.saveError != nil {
+				expectedError = test.saveError
+			}
+
+			require.ErrorIs(t, err, expectedError)
+			require.Equal(t, initialState, execCtx.taskState)
+			require.False(t, execCtx.finished)
+
+			if errors.Is(
+				test.updateError,
+				errors.NewWrongGenerationError(),
+			) {
+				// Resume with a new execution generation.
+				initialState.GenerationID++
+				state.GenerationID = initialState.GenerationID
+				execCtx = newTestExecutionContext(
+					task, taskStorage, initialState,
+				)
+			}
+
+			preparationError = nil
+			task.On("Save").Return(state.State, nil).Once()
+			checkState := matchesStateCallback(t, state)
+			taskStorage.On(
+				"UpdateTaskWithPreparation",
+				ctx,
+				mock.Anything,
+				mock.Anything,
+			).Run(func(args mock.Arguments) {
+				checkState(args)
+				prepare := args.Get(2).(func(
+					context.Context,
+					*persistence.Transaction,
+				) error)
+				err := prepare(ctx, &persistence.Transaction{})
+				require.NoError(t, err)
+			}).Return(state, nil).Once()
+
+			err = execCtx.FinishCancellationWithPreparation(
+				ctx, preparation,
+			)
+			require.NoError(t, err)
+			require.True(t, execCtx.finished)
+			require.Equal(t, state, execCtx.taskState)
+			mock.AssertExpectationsForObjects(t, task, taskStorage)
+		})
+	}
+}
+
+func TestRunnerFinishWithNonCancellableErrorAndPreparation(t *testing.T) {
+	ctx := newContext()
+	taskStorage := mocks.NewStorageMock()
+	task := NewTaskMock()
+	state := storage.TaskState{
+		ID:           taskID,
+		GenerationID: 42,
+		Status:       storage.TaskStatusRunning,
+		State:        []byte{1},
+	}
+	execCtx := newTestExecutionContext(task, taskStorage, state)
+	operationError := errors.NewDetailedErrorFull(
+		fmt.Errorf("operation failed"),
+		&errors.ErrorDetails{Code: 42, Message: "operation failure"},
+		true, // Silent.
+	)
+	taskError := errors.NewNonCancellableError(operationError)
+	state.Status = storage.TaskStatusCancelled
+	state.State = []byte{2}
+	state.SetError(taskError)
+
+	tx := &persistence.Transaction{}
+	preparationCalls := 0
+	preparation := func(
+		ctx context.Context,
+		actualTx *persistence.Transaction,
+	) error {
+
+		require.Same(t, tx, actualTx)
+		preparationCalls++
+		return nil
+	}
+	task.On("Save").Return(state.State, nil).Once()
+	taskStorage.On(
+		"UpdateTaskWithPreparation",
+		mock.Anything,
+		mock.MatchedBy(matchesState(t, state)),
+		mock.Anything,
+	).Run(func(args mock.Arguments) {
+		prepare := args.Get(2).(func(
+			context.Context, *persistence.Transaction,
+		) error)
+		err := prepare(args.Get(0).(context.Context), tx)
+		require.NoError(t, err)
+	}).Return(state, nil).Once()
+
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
+		ctx := args.Get(0).(context.Context)
+		err := execCtx.FinishWithNonCancellableErrorAndPreparation(
+			ctx, taskError, preparation,
+		)
+		require.NoError(t, err)
+
+		// Do not repeat preparation.
+		err = execCtx.FinishWithNonCancellableErrorAndPreparation(
+			ctx, taskError, preparation,
+		)
+		require.NoError(t, err)
+	}).Return(taskError).Once()
+
+	runnerMetrics := &mockRunnerMetrics{}
+	runnerMetrics.On("OnExecutionError", taskError).Return().Once()
+	runner := runnerForRun{metrics: runnerMetrics}
+	runner.executeTask(ctx, execCtx, task)
+
+	require.Equal(t, 1, preparationCalls)
+	require.Equal(t, state, execCtx.taskState)
+	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
 }
