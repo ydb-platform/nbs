@@ -248,6 +248,7 @@ struct TTestGrpcClient: public NClient::IEndpointFactory
 
     TString LastControlHost;
     bool CreateSeparateDataEndpoints = false;
+    bool ThrowOnCreateIOEndpoint = false;
     TVector<std::shared_ptr<TTestBlockStore>> DataEndpoints;
 
     void Start() override
@@ -273,6 +274,10 @@ struct TTestGrpcClient: public NClient::IEndpointFactory
         Y_UNUSED(host);
         Y_UNUSED(port);
         Y_UNUSED(isSecure);
+
+        if (ThrowOnCreateIOEndpoint) {
+            ythrow yexception() << "no data endpoint";
+        }
 
         if (!CreateSeparateDataEndpoints) {
             return {};
@@ -2231,6 +2236,92 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(5),
             both.GetEndpointSettleTime());
+    }
+
+    Y_UNIT_TEST(ShouldReleaseTheChannelWhenTheDataEndpointSetupThrows)
+    {
+        TTestEnv env;
+        env.GrpcClient->ThrowOnCreateIOEndpoint = true;
+
+        auto future = env.ConnectAsync("host-a");
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.Pool->GetCounters().Connections->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFailTheConnectionWhenTheChannelFutureHasAnException)
+    {
+        TTestEnv env;
+        env.EndpointsSetup->DeferForFqdn = "host-a";
+
+        auto future = env.ConnectAsync("host-a");
+        env.EndpointsSetup->DeferredSetupPromise.SetException("no channel");
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.Pool->GetCounters().Connections->Val());
+    }
+
+    Y_UNIT_TEST(ShouldAbortTheMoveWhenTheChannelFutureHasAnException)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true, true);
+        auto connection = env.Connect("host-a");
+
+        env.EndpointsSetup->DeferForFqdn = "host-b";
+        env.GrpcClient->Service->TabletHostToReport = "host-b";
+        env.Mount(connection);
+
+        env.EndpointsSetup->DeferredSetupPromise.SetException("no channel");
+
+        UNIT_ASSERT_VALUES_EQUAL("host-a", connection->GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.Pool->GetCounters().Connections->Val());
+
+        env.GrpcClient->Service->TabletHostToReport = "host-c";
+        env.Mount(connection);
+        UNIT_ASSERT_VALUES_EQUAL("host-c", connection->GetHost());
+    }
+
+    Y_UNIT_TEST(ShouldKeepTheMountOfAnotherClientWhenAnOldClientUnmounts)
+    {
+        TTestEnv env;
+        auto connection = env.Connect("host-a");
+        env.MountDisk(connection, "disk", "old-client");
+        env.MountDisk(connection, "disk", "new-client");
+
+        auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
+        request->SetDiskId("disk");
+        request->MutableHeaders()->SetClientId("old-client");
+        const auto unmounted = connection->GetService()
+                                   ->UnmountVolume(
+                                       MakeIntrusive<TCallContext>(),
+                                       std::move(request))
+                                   .GetValue();
+        UNIT_ASSERT_C(!HasError(unmounted), FormatError(unmounted.GetError()));
+
+        const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
+        UNIT_ASSERT_VALUES_EQUAL(1, mounts.size());
+        UNIT_ASSERT_VALUES_EQUAL("new-client", mounts[0].ClientId);
+    }
+
+    Y_UNIT_TEST(ShouldFailTheConnectionWhenTheChannelSetupThrows)
+    {
+        TTestEnv env;
+        env.EndpointsSetup->ThrowForFqdn = "host-a";
+
+        auto future = env.ConnectAsync("host-a");
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.Pool->GetCounters().Connections->Val());
     }
 }
 

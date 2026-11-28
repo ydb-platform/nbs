@@ -82,6 +82,19 @@ IBlockStorePtr CreateGrpcDataEndpoint(
     return endpoint ? std::move(endpoint) : controlService;
 }
 
+TResultOrError<IBlockStorePtr> ExtractControlService(
+    const TFuture<IBlockStorePtr>& future,
+    const TString& fqdn)
+{
+    auto service = ResultOrError(future);
+    if (!HasError(service) && !service.GetResult()) {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "Can't set up a control channel to " << fqdn);
+    }
+    return service;
+}
+
 // The part of a binding that does not need the connection; the rest is
 // TCellConnection::PrepareBinding.
 TResultOrError<THostBindingPtr> BuildHostBinding(
@@ -307,10 +320,15 @@ public:
         }
     }
 
-    void NoteUnmount(const TString& diskId)
+    void NoteUnmount(const TString& diskId, const TString& clientId)
     {
         with_lock (Lock) {
-            if (MountedDiskId == diskId) {
+            // an empty id is filled in below us, by the gRPC client, and is
+            // not known here - it matches any client
+            const bool sameClient = clientId.empty() ||
+                                    MountedClientId.empty() ||
+                                    MountedClientId == clientId;
+            if (MountedDiskId == diskId && sameClient) {
                 MountedDiskId.clear();
                 MountedClientId.clear();
                 MountedTabletHost.clear();
@@ -761,9 +779,8 @@ private:
         channel.Subscribe(
             [self, fqdn](const auto& future) mutable
             {
-                self->OnChannelAcquired(
-                    std::move(fqdn),
-                    future.GetValue());
+                auto service = ExtractControlService(future, fqdn);
+                self->OnChannelAcquired(std::move(fqdn), service);
             });
     }
 
@@ -798,16 +815,16 @@ private:
 
     void OnChannelAcquired(
         TString fqdn,
-        const IBlockStorePtr& controlService)
+        const TResultOrError<IBlockStorePtr>& service)
     {
-        if (!controlService) {
-            AbortMigration(fqdn, "no control channel", true);
+        if (HasError(service)) {
+            AbortMigration(fqdn, FormatError(service.GetError()), true);
             return;
         }
 
         TResultOrError<THostBindingPtr> prepared = MakeError(E_FAIL);
         try {
-            prepared = PrepareMigration(fqdn, controlService);
+            prepared = PrepareMigration(fqdn, service.GetResult());
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
             return;
@@ -1024,15 +1041,17 @@ public:
         request->MutableHeaders()->SetCellId(CellId);
 
         auto diskId = request->GetDiskId();
+        auto clientId = request->GetHeaders().GetClientId();
         return Impl->UnmountVolume(std::move(callContext), std::move(request))
             .Apply(
                 [connection = std::weak_ptr<TCellConnection>(Connection),
-                 diskId = std::move(diskId)](const auto& f)
+                 diskId = std::move(diskId),
+                 clientId = std::move(clientId)](const auto& f)
                 {
                     const auto& response = f.GetValue();
                     if (!HasError(response)) {
                         if (auto self = connection.lock()) {
-                            self->NoteUnmount(diskId);
+                            self->NoteUnmount(diskId, clientId);
                         }
                     }
                     return response;
@@ -1318,9 +1337,14 @@ TCellConnectionFuture CreateCellConnection(
     ICellConnectionObserverPtr observer)
 {
     auto fqdn = hostConfig.GetFqdn();
-    auto controlFuture = pool->AcquireControlChannel(fqdn);
+    auto controlFuture = SafeExecute<TResultOrError<TFuture<IBlockStorePtr>>>(
+        [&] { return pool->AcquireControlChannel(fqdn); });
+    if (HasError(controlFuture)) {
+        return MakeFuture(
+            TResultOrError<ICellConnectionPtr>(controlFuture.GetError()));
+    }
 
-    return controlFuture.Apply(
+    return controlFuture.GetResult().Apply(
         [pool = std::move(pool),
          hostConfig = std::move(hostConfig),
          bootstrap = std::move(bootstrap),
@@ -1328,17 +1352,22 @@ TCellConnectionFuture CreateCellConnection(
          fqdn = std::move(fqdn)](
             const auto& f) mutable -> TResultOrError<ICellConnectionPtr>
         {
-            auto controlService = f.GetValue();
-            if (!controlService) {
+            auto service = ExtractControlService(f, fqdn);
+            if (HasError(service)) {
                 pool->ReleaseControlChannel(fqdn);
-                return MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "Can't set up a control channel to " << fqdn);
+                return service.GetError();
             }
+            auto controlService = service.GetResult();
 
-            auto built =
-                BuildHostBinding(bootstrap, hostConfig, controlService, {});
+            auto built = SafeExecute<TResultOrError<THostBindingPtr>>(
+                [&]
+                {
+                    return BuildHostBinding(
+                        bootstrap,
+                        hostConfig,
+                        controlService,
+                        {});
+                });
             if (HasError(built)) {
                 pool->ReleaseControlChannel(fqdn);
                 return built.GetError();
