@@ -73,26 +73,6 @@ struct IRequestHandler: public NRdma::TNullContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TResponse>
-void ProcessThrottleTime(
-    const TCallContextPtr& callContext,
-    TResponse& localResponse)
-{
-    NProto::TThrottlerInfo& throttler =
-        *localResponse.MutableHeaders()->MutableThrottler();
-    const ui64 throttlerDelay = throttler.GetDelay();
-    callContext->AddTime(
-        EProcessingStage::Postponed,
-        TDuration::MicroSeconds(throttlerDelay));
-    throttler.SetDelay(0);
-    callContext->SetPossiblePostponeDuration(TDuration::Zero());
-
-    callContext->AddTime(
-        EProcessingStage::Shaping,
-        TDuration::MicroSeconds(throttler.GetShapingDelay()));
-    throttler.SetShapingDelay(0);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TReadBlocksHandler final
@@ -197,7 +177,10 @@ public:
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
-        ProcessThrottleTime(CallContext, localResponse);
+        ConsumeRemoteThrottlerInfo(
+            *CallContext,
+            *localResponse.MutableHeaders(),
+            Request->GetHeaders().GetInternal().GetParallelSplitPart());
 
         Response.SetValue(std::move(localResponse));
     }
@@ -372,7 +355,10 @@ public:
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
-        ProcessThrottleTime(CallContext, responseMsg);
+        ConsumeRemoteThrottlerInfo(
+            *CallContext,
+            *responseMsg.MutableHeaders(),
+            Request->GetHeaders().GetInternal().GetParallelSplitPart());
 
         Response.SetValue(std::move(responseMsg));
     }
@@ -472,7 +458,10 @@ public:
             GetCycleCount());
         responseMsg.MutableHeaders()->ClearTrace();
 
-        ProcessThrottleTime(CallContext, responseMsg);
+        ConsumeRemoteThrottlerInfo(
+            *CallContext,
+            *responseMsg.MutableHeaders(),
+            Request->GetHeaders().GetInternal().GetParallelSplitPart());
 
         Response.SetValue(std::move(responseMsg));
     }

@@ -71,6 +71,17 @@ message THeaders
 
         // Peer address of the request sender.
         string Peer = 6;
+
+        // Keep each split part's volume timing in its own response.
+        bool ReturnVolumeLatencyTiming = 7;
+
+        // Local to the volume actor while this event is queued by its throttler.
+        fixed64 VolumeThrottleStartCycles = 8;
+        uint64 VolumeThrottleDelayUs = 9;
+
+        // The volume must time each independently queued part separately,
+        // even though its caller shares one call context across all parts.
+        bool ParallelSplitPart = 10;
     }
 
     // These headers must not be set by end clients. They will be overwritten
@@ -106,6 +117,9 @@ message THeaders
     // When set it does not allow the execution of request on a disk that is a
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
+
+    // Ask a downstream endpoint to return its measured throttler delay.
+    bool LatencyTimingRequested = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,4 +132,13 @@ message TResponseHeaders
 
     // Response throttler info.
     NCloud.NProto.TThrottlerInfo Throttler = 2;
+
+    // Presence distinguishes a measured zero from a peer without timing.
+    oneof LatencyTiming
+    {
+        uint64 ThrottleDelayUs = 3;
+    }
+
+    // Queue wait of one split part, consumed by its parent before replying.
+    uint64 SplitPostponedUs = 4;
 }

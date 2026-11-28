@@ -15,6 +15,9 @@ struct TThrottlingRequestInfo final
     ui64 ByteCount = 0;
     ui32 OpType = 0;
     ui32 PolicyVersion = 0;
+    // Parallel requests can share a call context but occupy distinct queue
+    // entries.
+    bool Parallel = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
