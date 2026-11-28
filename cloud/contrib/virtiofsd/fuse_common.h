@@ -497,9 +497,24 @@ struct fuse_conn_info {
     unsigned time_gran;
 
     /**
-     * For future use.
+     * NBS FUSE_INIT vendor extension (FUSE_VENDOR_EXT, fuse.h). Kept apart
+     * from capable / want. nbs_ext and the guest fields are read-only,
+     * the filesystem sets nbs_want; the reply acks
+     * nbs_guest_features & nbs_want.
      */
-    unsigned reserved[22];
+    unsigned nbs_ext;
+    uint32_t nbs_guest_features;
+    uint32_t nbs_want;
+    /**
+     * Guest driver package BUILD, 0 if unknown. Identifies the package,
+     * but does not order features
+     */
+    uint32_t nbs_driver_build;
+
+    /**
+     * For future use. Take new fields from here, sizeof must stay 128.
+     */
+    unsigned reserved[18];
 };
 
 struct fuse_session;

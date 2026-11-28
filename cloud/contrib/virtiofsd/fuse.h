@@ -339,6 +339,20 @@ struct fuse_file_lock {
 #define FUSE_EXPLICIT_INVAL_DATA (1 << 25)
 #define FUSE_MAP_ALIGNMENT    (1 << 26)
 #define FUSE_HANDLE_KILLPRIV_V2    (1 << 28)
+#define FUSE_INIT_EXT        (1 << 30)
+/* bits 32..63 get shifted down 32 bits into the flags2 field */
+/*
+ * NBS vendor extension, not upstream: the nbs_* fields of fuse_init_in /
+ * fuse_init_out are valid. Requires FUSE_INIT_EXT. In the request the
+ * fields are used only if nbs_magic == NBS_INIT_MAGIC_V1; in the reply
+ * nbs_features_ack is a subset of the request nbs_features.
+ */
+#define FUSE_VENDOR_EXT        (1ULL << 63)
+
+/* 'NB01', defines the layout of the nbs_* fields of fuse_init_in */
+#define NBS_INIT_MAGIC_V1    0x3130424eU
+
+/* NBS vendor feature bits (nbs_features), none yet */
 
 /**
  * CUSE INIT request/reply flags
@@ -681,6 +695,13 @@ struct fuse_init_in {
     uint32_t    minor;
     uint32_t    max_readahead;
     uint32_t    flags;
+    /* 7.36: sent if FUSE_INIT_EXT */
+    uint32_t    flags2;
+    uint32_t    unused[8];
+    /* NBS vendor extension (FUSE_VENDOR_EXT), upstream unused[8..10] */
+    uint32_t    nbs_build;    /* driver package BUILD, 0 if unknown */
+    uint32_t    nbs_features;
+    uint32_t    nbs_magic;
 };
 
 #define FUSE_COMPAT_INIT_OUT_SIZE 8
@@ -697,7 +718,12 @@ struct fuse_init_out {
     uint32_t    time_gran;
     uint16_t    max_pages;
     uint16_t    map_alignment;
-    uint32_t    unused[8];
+    uint32_t    flags2;
+    uint32_t    max_stack_depth;
+    uint16_t    request_timeout;
+    uint16_t    unused[9];
+    /* NBS vendor extension (FUSE_VENDOR_EXT), upstream unused[9..10] */
+    uint32_t    nbs_features_ack;
 };
 
 #define CUSE_INIT_INFO_MAX 4096

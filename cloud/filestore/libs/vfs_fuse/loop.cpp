@@ -396,6 +396,9 @@ public:
             proto.GetCapable(),
             proto.GetWant(),
             proto.GetBufferSize(),
+            proto.GetGuestDriverBuild(),
+            proto.GetGuestNbsFeatures(),
+            proto.GetNbsFeaturesAck(),
         };
 
         fuse_session_setparams(Session, &params);
@@ -451,6 +454,9 @@ public:
         session.SetWant(params.want);
         session.SetBufferSize(
             fuse_negotiated_bufsize(params.bufsize, maxWrite));
+        session.SetGuestDriverBuild(params.nbs_driver_build);
+        session.SetGuestNbsFeatures(params.nbs_guest_features);
+        session.SetNbsFeaturesAck(params.nbs_features_ack);
 
         TString result;
         Y_PROTOBUF_SUPPRESS_NODISCARD session.SerializeToString(&result);
@@ -1611,6 +1617,16 @@ private:
         conn->max_background = FileSystemConfig->GetMaxBackground()
                                    ? FileSystemConfig->GetMaxBackground()
                                    : Config->GetMaxBackground();
+
+#if defined(FUSE_VIRTIO)
+        if (conn->nbs_ext) {
+            STORAGE_INFO("[f:%s][c:%s] guest driver build %u, features 0x%x",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str(),
+                conn->nbs_driver_build,
+                conn->nbs_guest_features);
+        }
+#endif
 
         // in case of newly mount we should drop any prev state
         // e.g. left from a crash or smth, paranoid mode

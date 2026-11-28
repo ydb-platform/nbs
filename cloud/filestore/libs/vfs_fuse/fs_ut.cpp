@@ -58,6 +58,7 @@
 #include <array>
 #include <atomic>
 #include <fstream>
+#include <tuple>
 #include <utility>
 
 namespace NCloud::NFileStore::NFuse {
@@ -2330,6 +2331,78 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto forget = bootstrap.Fuse->SendRequest<TForgetRequest>(nodeId, refCount);
         UNIT_ASSERT_NO_EXCEPTION(forget.GetValue(WaitTimeout));
+    }
+
+    Y_UNIT_TEST(ShouldNegotiateNbsInitExtension)
+    {
+        TBootstrap bootstrap;
+
+        TMutex stateMutex;
+        TString state;
+        bootstrap.Service->ResetSessionHandler = [&] (auto, auto request) {
+            with_lock(stateMutex) {
+                state = request->GetSessionState();
+            }
+            return MakeFuture(NProto::TResetSessionResponse{});
+        };
+
+        bootstrap.Start(false /* sendInitRequest */);
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // The test sees the upstream 7.39 fuse.h (vhost/request.h), so the
+        // NBS fields of cloud/contrib/virtiofsd/fuse.h go through unused[]
+        const ui32 vendorFlag = 1U << 31;   // FUSE_VENDOR_EXT >> 32
+        const ui32 nbsMagic = 0x3130424e;   // NBS_INIT_MAGIC_V1, 'NB01'
+
+        // Returns the reply and the persisted session state
+        auto sendInit = [&] (int flags, ui32 flags2, ui32 magic)
+        {
+            auto init = std::make_shared<TInitRequest>(flags);
+            auto& in = init->In->Body;
+            in.flags2 = flags2;
+            in.unused[8] = 246;     // nbs_build
+            in.unused[9] = 0x5;     // nbs_features
+            in.unused[10] = magic;  // nbs_magic
+
+            bootstrap.Fuse->SendRequest(init).GetValue(WaitTimeout);
+
+            // nbs_features_ack: no feature is enabled on the host yet
+            UNIT_ASSERT_VALUES_EQUAL(0, init->Out->Body.unused[6]);
+
+            NProto::TVfsSessionState proto;
+            with_lock(stateMutex) {
+                UNIT_ASSERT(proto.ParseFromString(state));
+            }
+            return std::make_pair(init->Out->Body, proto);
+        };
+
+        const int extFlags = TInitRequest::DefaultFlags | FUSE_INIT_EXT;
+
+        {
+            auto [out, proto] = sendInit(extFlags, vendorFlag, nbsMagic);
+            UNIT_ASSERT(out.flags & FUSE_INIT_EXT);
+            UNIT_ASSERT(out.flags2 & vendorFlag);
+            UNIT_ASSERT_VALUES_EQUAL(246, proto.GetGuestDriverBuild());
+            UNIT_ASSERT_VALUES_EQUAL(0x5, proto.GetGuestNbsFeatures());
+            UNIT_ASSERT_VALUES_EQUAL(0, proto.GetNbsFeaturesAck());
+        }
+
+        // Extension ignored: bad magic, no vendor flag, no FUSE_INIT_EXT
+        for (auto [flags, flags2, magic]: {
+                 std::make_tuple(extFlags, vendorFlag, 0x12345678U),
+                 std::make_tuple(extFlags, 0u, nbsMagic),
+                 std::make_tuple(
+                     TInitRequest::DefaultFlags,
+                     vendorFlag,
+                     nbsMagic)})
+        {
+            auto [out, proto] = sendInit(flags, flags2, magic);
+            UNIT_ASSERT(!(out.flags2 & vendorFlag));
+            UNIT_ASSERT_VALUES_EQUAL(0, proto.GetGuestDriverBuild());
+            UNIT_ASSERT_VALUES_EQUAL(0, proto.GetGuestNbsFeatures());
+        }
     }
 
     Y_UNIT_TEST(ShouldResetSessionStateUponInitAndDestroy)
