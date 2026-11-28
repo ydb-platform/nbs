@@ -1172,6 +1172,12 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
 
         VolumeInfo->VolumeActor = {};
         VolumeInfo->SetFailed(msg->Error);
+
+        if (CurrentRequest == RELEASE_TO_HIVE_REQUEST) {
+            // The tablet is handed over to the hive, so StartVolumeActor
+            // must not boot it again.
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, StartVolumeActor);
+        }
         return;
     }
 
