@@ -20,6 +20,7 @@ class TTiersManager;
 namespace NKikimr::NOlap {
 class TInsertColumnEngineChanges;
 class TDataAccessorsRequest;
+class TDataAccessorsResult;
 class TCompactColumnEngineChanges;
 class TColumnEngineChanges;
 class TTTLColumnEngineChanges;
