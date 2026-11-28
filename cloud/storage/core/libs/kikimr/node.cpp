@@ -234,7 +234,8 @@ TResultOrError<TCmsConfig> GetConfigsFromCms(
 
 TDriverConfig CreateDriverConfig(
     const TRegisterDynamicNodeOptions& options,
-    const TString& addr)
+    const TString& addr,
+    const TString& database)
 {
     TDriverConfig config;
 
@@ -250,6 +251,7 @@ TDriverConfig CreateDriverConfig(
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
+    config.SetDatabase(database);
     config.SetAuthToken(options.Settings.NodeRegistrationToken);
     config.SetEndpoint(addr);
 
@@ -263,7 +265,8 @@ NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
     const TString& addr,
     const NDiscovery::TNodeRegistrationSettings& settings)
 {
-    auto connection = TDriver(CreateDriverConfig(options, addr));
+    auto connection =
+        TDriver(CreateDriverConfig(options, addr, settings.Path_));
 
     auto client = NDiscovery::TDiscoveryClient(connection);
     NDiscovery::TNodeRegistrationResult result =
