@@ -449,8 +449,7 @@ func (r *runnerForCancel) executeTask(
 		r.metrics.OnExecutionError(err)
 		// Treat any errors (other than NonRetriableError or NonCancellableError)
 		// as retriable.
-		if !errors.Is(err, errors.NewEmptyNonRetriableError()) &&
-			!errors.Is(err, errors.NewEmptyNonCancellableError()) {
+		if errors.CanRetryCancellation(err) {
 			// In case of any retriable errors, we must not drop the cancel job.
 			// Let someone else deal with it.
 			// TODO: Maybe do need to drop after Nth retry?

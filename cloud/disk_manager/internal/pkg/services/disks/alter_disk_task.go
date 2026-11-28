@@ -74,3 +74,9 @@ func (t *alterDiskTask) GetMetadata(
 func (t *alterDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *alterDiskTask) getDiskOperationRequest() diskOperationRequest {
+	return t.request
+}

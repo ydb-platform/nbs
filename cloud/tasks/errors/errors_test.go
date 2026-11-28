@@ -262,3 +262,38 @@ func TestErrorMessageWithAndWithoutStacktrace(t *testing.T) {
 	externalErr := fmt.Errorf("externalErr")
 	require.Equal(t, ErrorForTracing(externalErr), externalErr.Error())
 }
+
+func TestCanRetryCancellation(t *testing.T) {
+	nonRetriable := NewNonRetriableError(assert.AnError)
+	nonCancellable := NewNonCancellableError(assert.AnError)
+
+	for _, test := range []struct {
+		name  string
+		err   error
+		retry bool
+	}{
+		{"nil", nil, false},
+		{"ordinary", assert.AnError, true},
+		{"retriable", NewRetriableError(assert.AnError), true},
+		{"wrong_generation", NewWrongGenerationError(), true},
+		{"interrupt", NewInterruptExecutionError(), true},
+		{"non_retriable", nonRetriable, false},
+		{"non_cancellable", nonCancellable, false},
+		{
+			"wrapped_non_retriable",
+			NewRetriableError(nonRetriable),
+			false,
+		},
+		{
+			"wrapped_non_cancellable",
+			fmt.Errorf("wrapped: %w", nonCancellable),
+			false,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(
+				t, test.retry, CanRetryCancellation(test.err),
+			)
+		})
+	}
+}

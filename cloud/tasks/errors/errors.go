@@ -216,6 +216,10 @@ func NewEmptyNonCancellableError() *NonCancellableError {
 	return NewNonCancellableError(nil)
 }
 
+func IsNonCancellable(err error) bool {
+	return Is(err, NewEmptyNonCancellableError())
+}
+
 func (e *NonCancellableError) Error() string {
 	msg := fmt.Sprintf("%v: %v", e.message(), e.Err.Error())
 	return appendStackTrace(msg, e.stackTrace)
@@ -451,6 +455,14 @@ func CanRetry(err error) bool {
 	return !Is(err, NewEmptyNonCancellableError()) &&
 		!Is(err, NewEmptyNonRetriableError()) &&
 		Is(err, NewEmptyRetriableError())
+}
+
+// CanRetryCancellation follows the runner's cancellation policy.
+// Unlike CanRetry, it also retries errors without a retry classification.
+func CanRetryCancellation(err error) bool {
+	return err != nil &&
+		!Is(err, NewEmptyNonRetriableError()) &&
+		!IsNonCancellable(err)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
