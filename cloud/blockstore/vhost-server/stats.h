@@ -5,12 +5,14 @@
 #include "critical_event.h"
 #include "histogram.h"
 
+#include <cloud/blockstore/libs/common/latency_sli.h>
+
 #include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/system/types.h>
 
 #include <array>
 #include <atomic>
-#include <optional>
 
 class IOutputStream;
 
@@ -33,6 +35,11 @@ struct TRequestStats
     T Bytes = {};
     T Errors = {};
     T Unaligned = {};
+    T LatencyGood = {};
+    T LatencyBad = {};
+    T LatencyUnknown = {};
+    T FinalCount = {};
+    T FinalErrors = {};
 
     TRequestStats() = default;
 
@@ -42,6 +49,11 @@ struct TRequestStats
         , Bytes{rhs.Bytes}
         , Errors{rhs.Errors}
         , Unaligned{rhs.Unaligned}
+        , LatencyGood{rhs.LatencyGood}
+        , LatencyBad{rhs.LatencyBad}
+        , LatencyUnknown{rhs.LatencyUnknown}
+        , FinalCount{rhs.FinalCount}
+        , FinalErrors{rhs.FinalErrors}
     {}
 
     template <typename U>
@@ -51,6 +63,11 @@ struct TRequestStats
         Bytes = rhs.Bytes;
         Errors = rhs.Errors;
         Unaligned = rhs.Unaligned;
+        LatencyGood = rhs.LatencyGood;
+        LatencyBad = rhs.LatencyBad;
+        LatencyUnknown = rhs.LatencyUnknown;
+        FinalCount = rhs.FinalCount;
+        FinalErrors = rhs.FinalErrors;
 
         return *this;
     }
@@ -62,6 +79,11 @@ struct TRequestStats
         Bytes += rhs.Bytes;
         Errors += rhs.Errors;
         Unaligned += rhs.Unaligned;
+        LatencyGood += rhs.LatencyGood;
+        LatencyBad += rhs.LatencyBad;
+        LatencyUnknown += rhs.LatencyUnknown;
+        FinalCount += rhs.FinalCount;
+        FinalErrors += rhs.FinalErrors;
 
         return *this;
     }
@@ -74,6 +96,11 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
     lhs.Bytes -= rhs.Bytes;
     lhs.Errors -= rhs.Errors;
     lhs.Unaligned -= rhs.Unaligned;
+    lhs.LatencyGood -= rhs.LatencyGood;
+    lhs.LatencyBad -= rhs.LatencyBad;
+    lhs.LatencyUnknown -= rhs.LatencyUnknown;
+    lhs.FinalCount -= rhs.FinalCount;
+    lhs.FinalErrors -= rhs.FinalErrors;
 
     return lhs;
 }
@@ -91,6 +118,32 @@ struct TStats
     std::array<TRequestStats<T>, 2> Requests = {};
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
+
+    void RecordLatency(bool write, ui64 bytes, ui64 elapsedCycles, bool failed,
+                       const TLatencySliConfig* latencySli,
+                       bool measurable = true) noexcept
+    {
+        auto& stats = Requests[write];
+        ++(failed ? stats.FinalErrors : stats.FinalCount);
+        if (!latencySli || !latencySli->Enabled) {
+            return;
+        }
+        if (!measurable) {
+            ++stats.LatencyUnknown;
+            return;
+        }
+        // Measure the original backend request, including its parts and
+        // decryption, using the same interval as the legacy timing histogram.
+        const auto result = latencySli->Classify(
+            write,
+            bytes,
+            failed ? 0 : CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
+            failed);
+        auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
+                      : result == ELatencySliResult::Bad ? stats.LatencyBad
+                                                        : stats.LatencyUnknown;
+        ++counter;
+    }
 
     TStats() = default;
 
@@ -156,30 +209,17 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
+    bool Fresh = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct ICompletionStats
-{
-    virtual ~ICompletionStats() = default;
-
-    virtual std::optional<TSimpleStats> Get(TDuration timeout) = 0;
-
-    virtual void Sync(const TSimpleStats& stats) = 0;
-
-    virtual void Sync(const TAtomicStats& stats) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-ICompletionStatsPtr CreateCompletionStats();
 
 void DumpStats(
     const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
-    ui64 cyclesPerMs);
+    ui64 cyclesPerMs,
+    const TLatencySliConfig* latencySli = nullptr, bool final = false);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

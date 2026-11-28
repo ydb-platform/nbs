@@ -29,7 +29,7 @@ public:
         ui32 queueIndex,
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
-    std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+    std::optional<TSimpleStats> GetCompletionStats() override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,9 +89,8 @@ void TNullBackend::ProcessQueue(
     }
 }
 
-std::optional<TSimpleStats> TNullBackend::GetCompletionStats(TDuration timeout)
+std::optional<TSimpleStats> TNullBackend::GetCompletionStats()
 {
-    Y_UNUSED(timeout);
     return {};
 }
 
