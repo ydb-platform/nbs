@@ -82,10 +82,9 @@ NProto::TVolumeBalancerDiskStats CreateVolumeStats(
 
 class TVolumeBalancerConfigBuilder
 {
-private:
+public:
     NProto::TStorageServiceConfig StorageConfig;
 
-public:
     TVolumeBalancerConfigBuilder& WithType(NProto::EVolumePreemptionType mode)
     {
         StorageConfig.SetVolumePreemptionType(mode);
@@ -1047,14 +1046,123 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol2", diskId3);
     }
+
+    Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.StorageConfig.SetVolumeBalancerAutoWarningEnabled(true);
+        config.StorageConfig.SetVolumeBalancerWarningSampleCount(2);
+
+        const auto initialPullDelay = UpdateCountersInterval * 3;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+                .WithInitialPullDelay(initialPullDelay)
+                .WithEnabled(true),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        testEnv.DispatchEvents();
+
+        auto diskId1 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .IsLocal = true},
+                {.DiskId = "vol1", .IsLocal = true},
+            },
+            {{"vol0", 15}, {"vol1", 1}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            UpdateCountersInterval);
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId1);
+
+        auto warningCounter = testEnv.GetRuntime()
+                                .GetAppData(0)
+                                .Counters->GetSubgroup("counters", "blockstore")
+                                ->GetSubgroup("component", "service")
+                                ->FindCounter("VolumeBalancerInWarning");
+        UNIT_ASSERT(warningCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol0",
+            {});
+        testEnv.DispatchEvents();
+
+        auto pollPreemptedVolume = [&](double cpuWait,
+                                       TMaybe<EChangeBindingOp> expected)
+        {
+            return RunState(
+                testEnv,
+                volumeBindingActorID,
+                {
+                    {.DiskId = "vol0",
+                     .IsLocal = false,
+                     .Source = NProto::SOURCE_BALANCER},
+                    {.DiskId = "vol1", .IsLocal = true},
+                },
+                {{"vol0", 15}, {"vol1", 1}},
+                cpuWait,
+                expected,
+                UpdateCountersInterval);
+        };
+
+        pollPreemptedVolume(/*cpuWait=*/0, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+        pollPreemptedVolume(/*cpuWait=*/1, {});
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
+
+        auto setStatus = [&](EBalancerStatus status)
+        {
+            testEnv.SendConfigureVolumeBalancerRequest(
+                volumeBindingActorID,
+                status);
+            return testEnv.GrabConfigureVolumeBalancerResponse();
+        };
+        const auto response = setStatus(EBalancerStatus::ENABLE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            EBalancerStatus::WARNING,
+            response->Record.GetOpStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
+        pollPreemptedVolume(/*cpuWait=*/0, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
+        auto diskId2 = pollPreemptedVolume(
+            /*cpuWait=*/1,
+            EChangeBindingOp::ACQUIRE_FROM_HIVE);
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId2);
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol0",
+            {});
+        testEnv.DispatchEvents();
+
+        auto diskId3 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .IsLocal = true},
+                {.DiskId = "vol1", .IsLocal = true},
+            },
+            {{"vol0", 15}, {"vol1", 1}},
+            1,
+            {},
+            UpdateCountersInterval + initialPullDelay);
+
+        UNIT_ASSERT(diskId3.empty());
+
+        setStatus(EBalancerStatus::DISABLE);
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+        setStatus(EBalancerStatus::WARNING);
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-
-template <>
-inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
-{
-    out << NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus(status);
-}

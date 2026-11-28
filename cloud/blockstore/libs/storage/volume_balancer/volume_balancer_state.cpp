@@ -22,6 +22,33 @@ constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TVolumeBalancerState::TSufferStatistics::Add(ui32 sufferCount)
+{
+    Values.push(sufferCount);
+    Sum += sufferCount;
+}
+
+void TVolumeBalancerState::TSufferStatistics::Reset()
+{
+    Sum = 0;
+    Values.clear();
+}
+
+void TVolumeBalancerState::TSufferStatistics::SetNumSamples(ui32 numSamples)
+{
+    NumSamples = numSamples;
+    while (Values.size() > NumSamples) {
+        Sum -= Values.front();
+        Values.pop();
+    }
+}
+
+ui32 TVolumeBalancerState::TSufferStatistics::GetMeanValue() const
+{
+    return (Values.empty() || Values.size() != NumSamples) ? 0
+                                                           : Sum / NumSamples;
+}
+
 TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
     : BackoffDelayProvider(pullInterval, MaxPullDelay)
     , LastSuccessfulPull(TInstant::Now())
@@ -44,10 +71,6 @@ void TVolumeBalancerState::UpdateVolumeStats(
     TInstant now)
 {
     CpuLack = cpuLack;
-
-    bool emergencyCpu =
-        cpuLack >= StorageConfig->GetCpuLackThreshold();
-
     THashSet<TString> knownDisks;
     for (const auto& d: Volumes) {
         knownDisks.insert(d.first);
@@ -78,9 +101,24 @@ void TVolumeBalancerState::UpdateVolumeStats(
                 now + info.BackoffDelayProvider.GetDelayAndIncrease();
         }
 
+        const bool isPreemptedByBalancer =
+            !info.IsLocal &&
+            info.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER;
+
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
+
+            if (isPreemptedByBalancer) {
+                info.SufferStatistics.Add(info.SufferCount);
+            }
         }
+
+        // Reset suffer statistics for local or manually preempted tablets
+        if (!isPreemptedByBalancer) {
+            info.SufferStatistics.Reset();
+        }
+        info.SufferStatistics.SetNumSamples(
+            StorageConfig->GetVolumeBalancerWarningSampleCount());
 
         if (info.IsLocal) {
             info.Cost = CalculateCostPerIO(v);
@@ -95,12 +133,44 @@ void TVolumeBalancerState::UpdateVolumeStats(
         Volumes.erase(d);
     }
 
-    if (emergencyCpu) {
+    if (Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        StorageConfig->GetVolumeBalancerAutoWarningEnabled() &&
+        HasSufferingPreemptedVolume())
+    {
+        Status = NPrivateProto::EBalancerOpStatus::WARNING;
+
+        // Reset suffer statistics, otherwise the next UpdateVolumeStats after
+        // SetStatus(ENABLE) switches straight back to WARNING
+        for (auto& v: Volumes) {
+            v.second.SufferStatistics.Reset();
+        }
+    }
+
+    // Push the volume, if balancer is in ENABLE state and if the CPU is in
+    // emergency state. Otherwise, pull the volume
+    const bool pushVolume =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        cpuLack >= StorageConfig->GetCpuLackThreshold();
+
+    if (pushVolume) {
         VolumeToPull = {};
         UpdateVolumeToPush();
     } else {
         VolumeToPush = {};
         UpdateVolumeToPull(now);
+    }
+}
+
+void TVolumeBalancerState::SetStatus(NPrivateProto::EBalancerOpStatus status)
+{
+    switch (status) {
+        case NPrivateProto::EBalancerOpStatus::ENABLE:
+        case NPrivateProto::EBalancerOpStatus::DISABLE:
+        case NPrivateProto::EBalancerOpStatus::WARNING:
+            Status = status;
+            break;
+        default:
+            break;
     }
 }
 
@@ -212,12 +282,35 @@ void TVolumeBalancerState::RenderConfig(TStringStream& out) const
 
 void TVolumeBalancerState::RenderState(TStringStream& out) const
 {
+    using EStatus = NPrivateProto::EBalancerOpStatus;
+    constexpr std::array<EStatus, 3> statuses = {
+        EStatus::ENABLE,
+        EStatus::DISABLE,
+        EStatus::WARNING};
+
     HTML(out) {
         TABLE_SORTABLE_CLASS("table table-condensed") {
             TABLEHEAD() {
                 TABLER() {
-                    TABLED() { out << "Enabled"; }
-                    TABLED() { out << ToString(IsEnabled); }
+                    TABLED() { out << "Status"; }
+                    TABLED () {
+                        out << "<form method='POST' class='form-inline'>"
+                               "<input type='hidden' name='fromStatus' value='"
+                            << EBalancerOpStatus_Name(Status)
+                            << "'><select name='status' aria-label='Balancer "
+                               "status' "
+                               "class='form-control input-sm'>";
+                        for (const auto status: statuses) {
+                            out << "<option"
+                                << (status == Status ? " selected" : "") << ">"
+                                << EBalancerOpStatus_Name(status)
+                                << "</option>";
+                        }
+                        out << "</select> <button type='submit' name='action' "
+                               "value='setStatus' class='btn btn-primary "
+                               "btn-sm'>"
+                               "Apply</button></form>";
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CPUs needed"; }
@@ -246,6 +339,25 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeBalancerState::HasSufferingPreemptedVolume() const
+{
+    const ui32 threshold =
+        StorageConfig->GetVolumeBalancerSufferCountThreshold();
+
+    return AnyOf(
+        Volumes,
+        [threshold](const auto& v)
+        {
+            const auto& info = v.second;
+            const bool preemptedByBalancer =
+                !info.IsLocal && info.PreemptionSource ==
+                                     NProto::EPreemptionSource::SOURCE_BALANCER;
+
+            return threshold != 0 && preemptedByBalancer &&
+                   info.SufferStatistics.GetMeanValue() >= threshold;
+        });
+}
 
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
@@ -306,8 +418,7 @@ bool TVolumeBalancerState::IsPreemptionEnabled(
     const bool configuredOn =
         isFeatureEnabledForFolder || StorageConfig->GetVolumeBalancerEnabled();
 
-    return configuredOn && IsEnabled &&
-           VolumeBalancerSwitch->IsBalancerEnabled();
+    return configuredOn && VolumeBalancerSwitch->IsBalancerEnabled();
 }
 
 bool TVolumeBalancerState::IsVolumePreemptibleToPush(
@@ -321,8 +432,9 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPush(
         (volume.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) &&
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
-    return IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
-           isSuitableMediaKind && !VolumesInProgress.count(diskId);
+    return Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+           IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
+           isSuitableMediaKind && !VolumesInProgress.contains(diskId);
 }
 
 bool TVolumeBalancerState::IsVolumePreemptibleToPull(
@@ -330,10 +442,15 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
     const TVolumeInfo& volume,
     TInstant now) const
 {
-    return IsPreemptionEnabled(diskId, volume) && !volume.IsLocal &&
+    const bool isPullEnabled =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE ||
+        Status == NPrivateProto::EBalancerOpStatus::WARNING;
+
+    return isPullEnabled && IsPreemptionEnabled(diskId, volume) &&
+           !volume.IsLocal &&
            volume.PreemptionSource ==
                NProto::EPreemptionSource::SOURCE_BALANCER &&
-           volume.NextPullAttempt <= now && !VolumesInProgress.count(diskId);
+           volume.NextPullAttempt <= now && !VolumesInProgress.contains(diskId);
 }
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(

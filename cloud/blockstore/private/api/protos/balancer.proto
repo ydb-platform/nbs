@@ -5,12 +5,15 @@ package NCloud.NBlockStore.NPrivateProto;
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Balancer state (Enabled/Diabled)
+// Balancer state
 
 enum EBalancerOpStatus {
     DONT_CHANGE = 0;
     ENABLE = 1;
     DISABLE = 2;
+
+    // Push is disabled, all pushed volumes are being pulled
+    WARNING = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

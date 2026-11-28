@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
@@ -59,3 +60,11 @@ constexpr TVolumeLoadProfile LoadLight{
 constexpr TVolumeLoadProfile LoadZero{};
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+template <>
+inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
+{
+    out << EBalancerOpStatus_Name(status);
+}

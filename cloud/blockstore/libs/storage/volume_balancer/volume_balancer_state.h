@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
@@ -15,6 +16,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -23,6 +25,22 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
+    class TSufferStatistics
+    {
+        TQueue<ui32> Values;
+        ui32 NumSamples = 0;
+        ui32 Sum = 0;
+
+    public:
+        void Add(ui32 sufferCount);
+        void Reset();
+
+        void SetNumSamples(ui32 numSamples);
+
+        // Returns 0 if samples count is less than NumSamples
+        [[nodiscard]] ui32 GetMeanValue() const;
+    };
+
     struct TVolumeInfo
     {
         TString CloudId;
@@ -44,6 +62,8 @@ class TVolumeBalancerState
         // configured read/write IOPS and bandwidth
         std::optional<TDuration> Cost;
 
+        TSufferStatistics SufferStatistics;
+
         TVolumeInfo(TDuration pullInterval);
     };
 
@@ -64,7 +84,8 @@ private:
     TString VolumeToPush;
     TString VolumeToPull;
 
-    bool IsEnabled = true;
+    NPrivateProto::EBalancerOpStatus Status =
+        NPrivateProto::EBalancerOpStatus::ENABLE;
 
     TDuration PullDelayResetTimespan;
 
@@ -87,14 +108,11 @@ public:
 
     void RenderHtml(TStringStream& out, TInstant now) const;
 
-    void SetEnabled(bool enable)
-    {
-        IsEnabled = enable;
-    }
+    void SetStatus(NPrivateProto::EBalancerOpStatus status);
 
-    bool GetEnabled() const
+    NPrivateProto::EBalancerOpStatus GetStatus() const
     {
-        return IsEnabled;
+        return Status;
     }
 
     void SetVolumeInProgress(TString volume)
@@ -117,6 +135,8 @@ private:
     void RenderPreemptedVolumes(TStringStream& out, TInstant now) const;
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
+
+    bool HasSufferingPreemptedVolume() const;
 
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);

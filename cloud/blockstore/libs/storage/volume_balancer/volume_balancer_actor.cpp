@@ -185,6 +185,9 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
     PushCount = serviceCounters->GetCounter("PushCount", true);
     PullCount = serviceCounters->GetCounter("PullCount", true);
+    VolumeBalancerInWarning =
+        serviceCounters->GetCounter("VolumeBalancerInWarning", false);
+    *VolumeBalancerInWarning = 0;
 
     ManuallyPreempted = serviceCounters->GetCounter("ManuallyPreempted", false);
     BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
@@ -316,11 +319,24 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto status = VolumeStats->GatherVolumePerfStatuses();
         THashMap<TString, ui32> statusMap(status.begin(), status.end());
 
+        const auto prevStatus = State->GetStatus();
+
         State->UpdateVolumeStats(
             std::move(msg->VolumeStats),
             std::move(statusMap),
             *CpuWaitCounter,
             ctx.Now());
+
+        if (prevStatus == NPrivateProto::EBalancerOpStatus::ENABLE &&
+            State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING)
+        {
+            *VolumeBalancerInWarning = 1;
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                "Some of preempted volumes suffers: Volume balancer has been "
+                "switched to WARNING state");
+        }
 
         if (!IsMaxInProgressLimitReached()) {
             if (auto vol = State->GetVolumeToPush()) {
@@ -374,29 +390,17 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>();
-    if (State->GetEnabled()) {
-        response->Record.SetOpStatus(NPrivateProto::EBalancerOpStatus::ENABLE);
-    } else {
-        response->Record.SetOpStatus(NPrivateProto::EBalancerOpStatus::DISABLE);
-    }
+    response->Record.SetOpStatus(State->GetStatus());
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
+    SetStatus(ev->Get()->Record.GetOpStatus());
+}
 
-    const auto* msg = ev->Get();
-
-    switch (msg->Record.GetOpStatus()) {
-        case NPrivateProto::EBalancerOpStatus::ENABLE: {
-            State->SetEnabled(true);
-            break;
-        }
-        case NPrivateProto::EBalancerOpStatus::DISABLE: {
-            State->SetEnabled(false);
-            break;
-        }
-        default: {
-            // remain the same
-        }
-    }
+void TVolumeBalancerActor::SetStatus(NPrivateProto::EBalancerOpStatus status)
+{
+    State->SetStatus(status);
+    *VolumeBalancerInWarning =
+        State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
@@ -33,9 +34,9 @@ TStorageConfigPtr CreateStorageConfig(
     bool volumeBalancerEnabled,
     ui32 cpuLackThreshold,
     NFeatures::TFeaturesConfigPtr featuresConfig,
-    TDuration initialPullDelay = InitialPullDelay)
+    TDuration initialPullDelay = InitialPullDelay,
+    NProto::TStorageServiceConfig storageConfig = {})
 {
-    NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
     storageConfig.SetVolumeBalancerEnabled(volumeBalancerEnabled);
     storageConfig.SetCpuLackThreshold(cpuLackThreshold);
@@ -45,7 +46,9 @@ TStorageConfigPtr CreateStorageConfig(
     }
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
 
-    return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
+    return std::make_shared<TStorageConfig>(
+        std::move(storageConfig),
+        std::move(featuresConfig));
 };
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
@@ -760,6 +763,117 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldOnlyPullVolumesInWarningState)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr);
+
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+
+        state.SetStatus(NPrivateProto::EBalancerOpStatus::WARNING);
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 15;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats({.DiskId = "vol0"}),
+                CreateVolumeStats({.DiskId = "vol1"})};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats({.DiskId = "vol0", .IsLocal = false}),
+                CreateVolumeStats({.DiskId = "vol1"})};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(NPrivateProto::WARNING, state.GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeBalancerAutoWarningEnabled(true);
+        config.SetVolumeBalancerWarningSampleCount(2);
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr,
+            InitialPullDelay,
+            std::move(config));
+
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 15;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats({.DiskId = "vol0"}),
+                CreateVolumeStats({.DiskId = "vol1"})};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::ENABLE);
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats({.DiskId = "vol0", .IsLocal = false}),
+                CreateVolumeStats({.DiskId = "vol1"})};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT_VALUES_EQUAL("vol1", state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::ENABLE);
+
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::WARNING);
         }
     }
 }
