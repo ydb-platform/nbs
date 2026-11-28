@@ -1046,4 +1046,19 @@ message TStorageConfig
 
     // Device space kept for the journal, the storage group and shard metadata.
     optional uint64 FastShardReservedSize = 570;
+
+    // Stores the blobs in compressed form (see BlobCompressionCodec and
+    // BlobCompressionChunkSize). When disabled, compression is only measured
+    // for the blobs sampled by BlobCompressionRate.
+    optional bool BlobCompressionEnabled = 571;
+
+    // Minimum saving in percent. A chunk is stored compressed only if it saves
+    // at least this share of its size, and a blob keeps the compressed format
+    // only if it saves at least this share in total. Should be at least 1,
+    // with 0 nothing is compressed.
+    optional uint32 BlobCompressionMinSavedPercent = 572;
+
+    // Blobs smaller than this size (in bytes) are stored raw without
+    // measuring.
+    optional uint32 BlobCompressionMinBlobSize = 573;
 }
